@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode"
 
 	"github.com/gdamore/tcell/v2"
@@ -69,6 +70,9 @@ func (a *App) gridOptionsFor(res *exec.Result) grid.Options {
 		},
 		OnChange: a.updateStatus,
 		OpenPrompt: func(p tview.Primitive, title string, w, h int, closed func()) {
+			if in, ok := p.(*tview.InputField); ok && strings.HasPrefix(in.GetLabel(), "WHERE") {
+				a.wireWhereCompletion(in)
+			}
 			box := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(p, 0, 1, true)
 			box.SetBorder(true).SetTitle(" " + title + " ").SetBorderColor(a.theme.BorderFocus)
 			a.gridPromptClosed = closed
@@ -79,6 +83,9 @@ func (a *App) gridOptionsFor(res *exec.Result) grid.Options {
 			a.gridPromptClosed = nil
 			a.closeModal("gridprompt", a.results.Current().primitive())
 		},
+	}
+	if s != nil && res != nil && res.Origin != nil {
+		opts.CompleteWhere = a.whereCompleter(s, res.Origin)
 	}
 	if s != nil {
 		opts.Dialect = s.Dialect
@@ -294,4 +301,64 @@ func (a *App) clipboardKeys(ev *tcell.EventKey) (*tcell.EventKey, bool) {
 	}
 	tab.Editor.PasteLast()
 	return nil, true
+}
+
+// whereCompleter completes the free WHERE expression of a table-origin
+// result (spec 10.5): columns of the table, keywords and functions. It
+// completes "SELECT * FROM <table> WHERE <text>" with the SQL completer and
+// returns whole-line entries, as tview's InputField expects. Candidates
+// are returned only while completion was requested (Ctrl+Space or the
+// alternative key; never automatically, spec 3.3).
+func (a *App) whereCompleter(s *session.Session, origin *exec.Origin) func(string) []string {
+	return func(text string) []string {
+		if !a.whereList {
+			return nil
+		}
+		prefix := "SELECT * FROM " + origin.SQL + " WHERE "
+		full := prefix + text
+		comp := complete.New(a.meta, s.Dialect, meta.Path{Conn: s.Profile.Name, Database: origin.Object.Database, Schema: origin.Object.Schema})
+		ctx, cancel := context.WithTimeout(context.Background(), complete.CompleteTimeout)
+		defer cancel()
+		res := comp.Complete(ctx, full, len(full))
+		start := res.Start - len(prefix)
+		if start < 0 || start > len(text) {
+			start = len(text)
+		}
+		var out []string
+		for _, it := range res.Items {
+			out = append(out, text[:start]+it.Text)
+		}
+		a.whereList = len(out) > 0
+		return out
+	}
+}
+
+// wireWhereCompletion opens the completion list of the WHERE prompt on the
+// completion keys and tracks whether it is open.
+func (a *App) wireWhereCompletion(in *tview.InputField) {
+	a.whereList = false
+	// With an AutocompletedFunc set, tview does not insert the entry itself.
+	in.SetAutocompletedFunc(func(text string, index, source int) bool {
+		if source == tview.AutocompletedNavigate {
+			return false // moving the highlight keeps the typed text and the list
+		}
+		in.SetText(text)
+		a.whereList = false
+		return true
+	})
+	prev := in.GetInputCapture()
+	in.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+		if a.keymap.Action(PaneCmd, ev) == "complete" {
+			a.whereList = true
+			in.Autocomplete()
+			return nil
+		}
+		if ev.Key() == tcell.KeyEscape && a.whereList {
+			a.whereList = false // tview closes the list; the prompt stays open
+		}
+		if prev != nil {
+			return prev(ev)
+		}
+		return ev
+	})
 }

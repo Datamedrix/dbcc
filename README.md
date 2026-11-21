@@ -114,6 +114,7 @@ dbcc -p <profile> < file.sql            stdin is not a terminal: run without UI
 | `--export-commands <dir>` | Write the embedded command scripts to a directory and exit. |
 | `--config <file>` | Use another configuration file instead of `~/.config/dbcc/config.toml`. |
 | `--version` | Print the version (`dbcc <version>`). |
+| `--licenses` | Print the licence notices of the Go standard library and of every bundled third-party module, and exit. |
 | `-h`, `--help` | Usage. |
 
 Headless mode is selected when `-f` or `-c` is given **or stdin is not a terminal**. Exit codes: `0` success, `1` SQL or command-script error, `2` usage, configuration or connection error. See [Headless mode](#headless-mode-and-scripts).
@@ -351,7 +352,7 @@ Scratches work like DataGrip's scratch files:
 | PostgreSQL | View, function, procedure (every overload): `CREATE OR REPLACE`; trigger: `CREATE OR REPLACE TRIGGER` on PostgreSQL 14+, otherwise (and for constraint triggers) `DROP TRIGGER IF EXISTS … ON table` plus `CREATE`; materialized view: `DROP MATERIALIZED VIEW IF EXISTS`, `CREATE`, its indexes and its comment |
 | SQL Server | GO batches: a guard batch that stops with `THROW` unless the session is in the object's database; `SET ANSI_NULLS`/`QUOTED_IDENTIFIER OFF` where the module was created that way; the module text with `CREATE OR ALTER` and `[schema].[name]` (before SQL Server 2016: a stub plus `ALTER`); finally the options back `ON` |
 
-*Run all* (`F6`) in an object tab replaces the object. It counts as a write: blocked in read-only profiles, and with `confirm_writes` it asks ("Replace X on prof?"; on MySQL with the note that `DROP` + `CREATE` is not atomic and that privileges granted on the routine are removed while `automatic_sp_privileges = 1`, the default). After a successful run the tab is marked saved and the log says "replaced <name>". `Alt+R` restores the source as loaded (as an undoable step). Closing a changed object tab, or quitting, asks first.
+*Run all* (`F6`) in an object tab replaces the object. It counts as a write: blocked in read-only profiles, and with `confirm_writes` it asks ("Replace X on prof?"). **On MySQL it always asks**, also without `confirm_writes`, with the note that `DROP` + `CREATE` is not atomic and that privileges granted on the routine are removed while `automatic_sp_privileges = 1`, the default (MariaDB replaces with `CREATE OR REPLACE` and keeps them). After a successful run the tab is marked saved and the log says "replaced <name>". `Alt+R` restores the source as loaded (as an undoable step). Closing a changed object tab, or quitting, asks first.
 
 ---
 
@@ -439,7 +440,7 @@ Three kinds, combined with AND, each visible in the status line (`filter: search
 |---|---|
 | `/` | **Quick search**: one text matched against all columns (contains, case-insensitive). Empty input removes it. |
 | `f` | **Column filter** on the current column. Operators (selectable by digit): `1` contains, `2` starts with, `3` `=`, `4` `<>`, `5` `<`, `6` `<=`, `7` `>`, `8` `>=`, `9` is NULL, `0` is not NULL. Operators with a value then ask for it; for `=`, `<>`, `<`, `<=`, `>`, `>=` the input starts with the text value of the current cell. |
-| `w` | **Free `WHERE`**: an expression you type. Table-origin results only. Empty input removes it. |
+| `w` | **Free `WHERE`**: an expression you type. Table-origin results only. Empty input removes it. `Ctrl+Space` (or the alternative completion key) opens a list of the table's columns, keywords and functions; `Up`/`Down` choose, `Enter`/`Tab` accept, `Esc` closes only the list. The list never opens by itself. |
 | `x` | Remove filters and sorting: with one active it is removed; with several a menu appears (`1`–`9` for an entry, `a` for all). |
 
 Execution:
@@ -551,7 +552,7 @@ A grid of the referenced table with all columns and a filter line: typing search
 |---|---|
 | `Enter` | Run the command or SQL |
 | `Esc` | Clear the line and go to the editor |
-| `Up` / `Down` | Previous / next entry of this session's command history (a ring that includes the empty line) |
+| `Up` / `Down` | Previous / next entry of the command history (a ring that includes the empty line). The history is kept across restarts in `~/.local/state/dbcc/cmdline_history` (last 1000 lines; lines containing `IDENTIFIED BY` or `PASSWORD` are not written to disk). |
 | `Ctrl+Space` (or `Ctrl+O`) | Completion list; while open it has the focus: `Up`/`Down`/`PgUp`/`PgDn` select, `Enter`/`Tab` accept, `Esc` closes only the list, typing filters |
 
 Arguments are split like a shell: `'…'` is literal, in `"…"` the escapes `\"` and `\\` work, a backslash outside quotes escapes the next character. A trailing `;` after a command is tolerated (`pwd;`).
@@ -820,7 +821,8 @@ Candidates depend on the tokens before the cursor (token-level heuristic, no par
 | Elsewhere inside a statement | Columns of the tables named in the statement, then keywords and functions of the dialect |
 | Inside strings and comments | nothing |
 | Command line, first word | Commands |
-| Command line, arguments | By the declared argument type: objects, paths, profiles, files |
+| Command line, arguments | By the declared argument type: objects, paths, profiles, files – also after flags (`cat -t view ` → objects) |
+| Command line, flags | After `-` the command's flag names (`tail -` → `-f`, `-i`, `-k`); after a value flag its declared values (`cat -t ` → `table`, `view`, …) or values of its type; `--` ends the flags |
 | Command line with SQL | As in the editor |
 
 Metadata comes from a cache that is loaded per schema on first use and dropped after DDL statements and with `F5` in the tree. Note: DDL not yet committed in an open transaction of the main session (possible on PostgreSQL and SQL Server) is not visible in tree and completion until commit, because they read through the auxiliary connection.
@@ -870,7 +872,7 @@ dbcc -p shop-dev -c "tail -f -i 1 events" --format json
 - **Messages** go to stderr: notes from commands, server warnings (`warning (line N): …`), implicit commits. With `-v` also every statement: `-- line N: <text>, 42 rows (12ms)`.
 - **Errors** go to stderr: `ERROR at line N: <error>` followed by the indented statement, or `ERROR: <error>`.
 - **Confirmations:** write commands fail without `--yes` ("confirmation required; run with --yes"). In `confirm_writes` profiles writing statements are refused without `--yes` ("cancelled by user").
-- `history` prints the list, `edit` the replace script, `help about` the About text. Primitives that need a pick list or the editor fail with "not available without UI".
+- `history` prints the list, `edit` the replace script, `help about` the About text (with a pointer to `dbcc --licenses`). Primitives that need a pick list or the editor fail with "not available without UI".
 - Password prompts use `/dev/tty`.
 - `Ctrl+C` (SIGINT) cancels the running statement.
 - **`tail -f` headless** prints the last n rows, then each new row as it arrives – `table` without repeating the header, `csv`/`tsv` records, `json` as **JSON Lines** (one object per line, no enclosing array) – until SIGINT or SIGTERM, then exits 0. An error that stops following (e.g. the table was dropped) exits 1. A headless following result keeps at most 3,000 rows in memory.
@@ -1013,7 +1015,7 @@ Notes: bindings of the focused pane take precedence over global ones. An action 
 
 ## Key reference
 
-F1 shows these tables from the live keymap (so including your changes), plus every command; the search field filters keys and commands. In the help `F1` or `Tab` opens the About page, `Esc` closes, `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End` scroll. The About page closes with `Esc`.
+F1 shows these tables from the live keymap (so including your changes), plus every command; the search field filters keys and commands. In the help `F1` or `Tab` opens the About page, `Esc` closes, `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End` scroll. On the About page `L` opens the third-party licences (scroll with `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End`; `L` or `Esc` goes back); `Esc` closes the About page.
 
 **Esc+digit and Alt+digit act as F1–F10** (`0` = F10), Esc+digit within one second. Modal windows (form, lookup, dialogs) override the global bindings while they are open.
 
@@ -1151,6 +1153,7 @@ Registers a command; allowed only while a script loads.
 | `help` | string | Description (help overlay, `help`) |
 | `args` | list of strings | Argument types: `object`, `path`, `profile`, `file`, `int`, `string`; suffix `?` = optional, `...` = zero or more (last only). A required argument cannot follow an optional one. Drives completion and the arity/`int` check. |
 | `flags` | table name → type | `bool` (switch) or one of the argument types (flag with value; `int` is checked). Names: a letter, then letters, digits, `_`, `-`. |
+| `flag_values` | table flag → list of strings | Optional: values offered by completion for a value flag (e.g. `flag_values = { t = { "table", "view" } }` in `cat`). Other values are still accepted. |
 | `write` | boolean | `true`: the command writes – blocked in read-only profiles; `ctx:exec` shows each statement and asks |
 | `run` | function, required | `run(ctx, args, flags)`: `args` are the positional arguments as strings, `flags` the given flags (switches `true`, values as strings) |
 
@@ -1406,3 +1409,5 @@ A product by **Datamedrix GmbH**.
 Contact: Anton Grünberg · a.gruenberg@datamedrix.com · https://www.datamedrix.com
 
 The About page (F1, then `F1` or `Tab`; or `help about`) shows the logo, version, build date and contact details.
+
+**Third-party licences:** press `L` on the About page for the licence notices of the bundled libraries: a summary table (module, version, licence), then each full licence text. `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End` scroll, `L` or `Esc` returns to the About page. Without UI, `dbcc --licenses` prints the same text. The text is generated from the module cache by `make licenses` (`internal/branding/THIRD_PARTY_LICENSES.txt`); a test fails when `go.mod` changes and the file was not regenerated. The MySQL driver (`github.com/go-sql-driver/mysql`) is under MPL-2.0; dbcc uses it unmodified, its source code is available at https://github.com/go-sql-driver/mysql.

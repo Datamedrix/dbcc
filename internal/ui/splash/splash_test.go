@@ -297,3 +297,182 @@ func TestLayoutThresholds(t *testing.T) {
 		t.Errorf("last text line %q, want the web address", last)
 	}
 }
+
+func TestAboutShowsLicenceHint(t *testing.T) {
+	s := newScreen(t, 120, 40, 256)
+	render(s, New(ModeAbout, nil))
+	assertCentred(t, s, licenceHints[0], 120)
+	_, wy := find(t, s, branding.Web)
+	if _, hy := find(t, s, licenceHints[0]); hy != wy+2 {
+		t.Errorf("hint at row %d, web at %d", hy, wy)
+	}
+	// Not on the splash screen.
+	render(s, New(ModeSplash, nil))
+	for _, l := range lines(s) {
+		if strings.Contains(l, "Licences: L") || strings.Contains(l, licenceHints[0]) {
+			t.Fatal("licence hint on the splash screen")
+		}
+	}
+}
+
+// TestAboutHintDroppedWhenTight: at the exact layout thresholds the hint is
+// left out, and the logo variant does not change because of it.
+func TestAboutHintDroppedWhenTight(t *testing.T) {
+	text := textLines()
+	wideH := len(logoLines(branding.LogoWide)) + 1 + len(text)
+	for _, c := range []struct {
+		w, h  int
+		hints int
+	}{{60, wideH, 0}, {60, wideH + 1, 1}, {60, wideH + 2, 2}, {20, 10, 0}} {
+		s := newScreen(t, c.w, c.h, 256)
+		render(s, New(ModeAbout, nil))
+		v, logo, txt := Layout(c.w, c.h)
+		if got := len(aboutHint(c.w, c.h, len(logo)+1+len(txt))); got != c.hints {
+			t.Errorf("%dx%d: %d hint lines, want %d", c.w, c.h, got, c.hints)
+		}
+		if c.w == 60 && v != LogoWide {
+			t.Errorf("%dx%d: variant %d", c.w, c.h, v)
+		}
+		if c.w == 60 {
+			find(t, s, branding.Web) // the text still fits
+		}
+		if c.hints > 0 {
+			find(t, s, licenceHints[0])
+		}
+	}
+	if h := aboutHint(15, 40, 10); len(h) != 2 || h[1] != "Licences: L" {
+		t.Errorf("narrow hint %q", h)
+	}
+	if h := aboutHint(5, 40, 10); h != nil {
+		t.Errorf("hint at 5 columns: %q", h)
+	}
+}
+
+func contentRow(s tcell.Screen, y int) string { return strings.TrimSpace(line(s, y)) }
+
+func TestLicenceViewKeys(t *testing.T) {
+	calls := 0
+	sp := New(ModeAbout, func() { calls++ })
+	s := newScreen(t, 100, 30, 256)
+	render(s, sp)
+	press(sp, tcell.KeyRune, 'l')
+	if !sp.ShowingLicences() {
+		t.Fatal("l did not open the licence view")
+	}
+	render(s, sp)
+	find(t, s, "Third-party licences")
+	find(t, s, "THIRD-PARTY LICENCES")
+	find(t, s, "L/Esc: back")
+	for _, l := range branding.Licenses[:10] { // the summary is at the top
+		find(t, s, l.Module)
+	}
+	for _, l := range lines(s) {
+		if strings.Contains(l, branding.Web) {
+			t.Fatal("About content still drawn")
+		}
+	}
+
+	// Down scrolls one line: row 2 moves to row 1.
+	second := contentRow(s, 2)
+	press(sp, tcell.KeyDown, 0)
+	render(s, sp)
+	if got := contentRow(s, 1); got != second {
+		t.Errorf("Down: row 1 %q, want %q", got, second)
+	}
+	press(sp, tcell.KeyUp, 0)
+	press(sp, tcell.KeyUp, 0) // clamped at the top
+	render(s, sp)
+	if sp.scroll != 0 || contentRow(s, 1) != "THIRD-PARTY LICENCES" {
+		t.Errorf("Up: scroll %d, row 1 %q", sp.scroll, contentRow(s, 1))
+	}
+
+	// PgDn moves by a page minus one line.
+	rows := 30 - 2
+	last := contentRow(s, rows) // last content row
+	press(sp, tcell.KeyPgDn, 0)
+	render(s, sp)
+	if sp.scroll != rows-1 || contentRow(s, 1) != last {
+		t.Errorf("PgDn: scroll %d, row 1 %q, want %q", sp.scroll, contentRow(s, 1), last)
+	}
+	press(sp, tcell.KeyPgUp, 0)
+	render(s, sp)
+	if sp.scroll != 0 {
+		t.Errorf("PgUp: scroll %d", sp.scroll)
+	}
+
+	// End shows the end of the last licence text; Home returns.
+	press(sp, tcell.KeyEnd, 0)
+	render(s, sp)
+	wrapped := wrapText(branding.ThirdPartyLicenses, licenceWidth)
+	if sp.scroll != len(wrapped)-rows || contentRow(s, rows) != strings.TrimSpace(wrapped[len(wrapped)-1]) {
+		t.Errorf("End: scroll %d of %d, last row %q", sp.scroll, len(wrapped), contentRow(s, rows))
+	}
+	press(sp, tcell.KeyDown, 0) // clamped at the bottom
+	render(s, sp)
+	if sp.scroll != len(wrapped)-rows {
+		t.Errorf("Down at the end: scroll %d", sp.scroll)
+	}
+	press(sp, tcell.KeyHome, 0)
+	if sp.scroll != 0 {
+		t.Errorf("Home: scroll %d", sp.scroll)
+	}
+
+	// Esc returns to the About content, a second Esc closes About.
+	press(sp, tcell.KeyEscape, 0)
+	if sp.ShowingLicences() || calls != 0 {
+		t.Fatalf("Esc in licence view: showing %v, done %d", sp.ShowingLicences(), calls)
+	}
+	render(s, sp)
+	find(t, s, branding.Web)
+	press(sp, tcell.KeyRune, 'L')
+	if !sp.ShowingLicences() {
+		t.Fatal("L did not open the licence view")
+	}
+	press(sp, tcell.KeyRune, 'L')
+	if sp.ShowingLicences() || calls != 0 {
+		t.Fatal("L did not return to About")
+	}
+	press(sp, tcell.KeyEscape, 0)
+	if calls != 1 {
+		t.Fatalf("second Esc: done called %d times", calls)
+	}
+}
+
+func TestSplashIgnoresLicenceKey(t *testing.T) {
+	calls := 0
+	sp := New(ModeSplash, func() { calls++ })
+	sp.Start(nil, time.Hour)
+	press(sp, tcell.KeyRune, 'l')
+	if calls != 1 || sp.ShowingLicences() {
+		t.Fatalf("l on the splash: done %d, licences %v", calls, sp.ShowingLicences())
+	}
+}
+
+func TestLicenceViewSmallSizes(t *testing.T) {
+	for _, sz := range [][2]int{{20, 10}, {12, 3}, {1, 1}, {200, 60}} {
+		sp := New(ModeAbout, nil)
+		press(sp, tcell.KeyRune, 'l')
+		s := newScreen(t, sz[0], sz[1], 256)
+		render(s, sp)
+		press(sp, tcell.KeyEnd, 0)
+		render(s, sp)
+		press(sp, tcell.KeyPgUp, 0)
+		render(s, sp)
+		if sz[1] >= 3 {
+			find(t, s, "Third")
+		}
+	}
+}
+
+func TestWrapText(t *testing.T) {
+	got := wrapText("short\nthe quick brown fox jumps\nabcdefghijkl\n\nü ü", 10)
+	want := []string{"short", "the quick", "brown fox", "jumps", "abcdefghij", "kl", "", "ü ü"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("%q", got)
+	}
+	for _, l := range wrapText(branding.ThirdPartyLicenses, licenceWidth) {
+		if uniseg.StringWidth(l) > licenceWidth {
+			t.Fatalf("line too wide: %q", l)
+		}
+	}
+}

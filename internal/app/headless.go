@@ -293,10 +293,22 @@ func finish(env *Env, err error, sink *headlessSink) error {
 	if errors.As(err, &se) {
 		fmt.Fprintf(env.Stderr, "ERROR at line %d: %v\n", se.Line, se.Err)
 		fmt.Fprintf(env.Stderr, "statement:\n%s\n", indent(se.Stmt))
-		return err
+		return reported{err}
 	}
 	fmt.Fprintf(env.Stderr, "ERROR: %v\n", err)
-	return err
+	return reported{err}
+}
+
+// reported marks an error that headless mode has already written to
+// stderr; errors.As/Is still see the original (exit codes).
+type reported struct{ error }
+
+func (r reported) Unwrap() error { return r.error }
+
+// Reported reports whether err was already written to stderr.
+func Reported(err error) bool {
+	var r reported
+	return errors.As(err, &r)
 }
 
 func indent(s string) string {

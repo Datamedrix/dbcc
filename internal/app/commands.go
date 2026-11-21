@@ -130,7 +130,8 @@ func (h *headlessSink) EditorOpen(title, text string, obj *script.ObjectRef) err
 
 func (h *headlessSink) About() error {
 	lines := []string{branding.Title + " " + branding.Version, branding.Subtitle, "", "Datamedrix",
-		branding.Company, branding.Contact + " <" + branding.Email + ">"}
+		branding.Company, branding.Contact + " <" + branding.Email + ">", branding.Web,
+		"", "Third-party licences: dbcc --licenses"}
 	if branding.BuildDate != "" {
 		lines[0] += " (" + branding.BuildDate + ")"
 	}

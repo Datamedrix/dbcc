@@ -32,6 +32,9 @@ func run() int {
 		fmt.Println(branding.Title, branding.Version)
 		return app.ExitOK
 	}
+	if opts.Licenses {
+		return app.PrintLicenses(os.Stdout)
+	}
 	path := opts.ConfigPath
 	if path == "" {
 		path = config.DefaultPath()
@@ -50,7 +53,11 @@ func run() int {
 		return app.ExitCode(app.ExportCommands(opts.ExportCommands, os.Stderr))
 	}
 	if opts.Headless(os.Stdin) {
-		return app.ExitCode(app.RunHeadless(ctx, env))
+		err := app.RunHeadless(ctx, env)
+		if err != nil && !app.Reported(err) {
+			fmt.Fprintln(os.Stderr, "dbcc:", err) // e.g. missing or unknown profile, connection failure
+		}
+		return app.ExitCode(err)
 	}
 	return app.ExitCode(app.RunTUI(ctx, env))
 }

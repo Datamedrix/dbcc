@@ -232,6 +232,7 @@ dbcc.command{
           "source of a view, procedure, function, trigger or event. -t table|view|procedure|function|trigger|event",
   args  = { "object" },
   flags = { t = "string" },
+  flag_values = { t = { "table", "view", "procedure", "function", "trigger", "event", "materialized view", "mview" } },
   run = function(ctx, args, flags)
     local kind = flags.t and (aliases[flags.t] or flags.t)
     local obj = ctx:resolve(args[1], kind)

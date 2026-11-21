@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/term"
 
+	"dbcc/internal/branding"
 	"dbcc/internal/config"
 	"dbcc/internal/exec"
 	"dbcc/internal/script"
@@ -37,6 +38,7 @@ type Options struct {
 	ConfigPath     string
 	Verbose        bool
 	Version        bool
+	Licenses       bool
 }
 
 // UsageError is a command-line or configuration error (exit code 2).
@@ -63,6 +65,7 @@ func ParseArgs(args []string, stderr io.Writer) (*Options, error) {
 	fs.StringVar(&o.ConfigPath, "config", "", "configuration file (default "+config.DefaultPath()+")")
 	fs.BoolVar(&o.Verbose, "v", false, "headless: log every statement to stderr")
 	fs.BoolVar(&o.Version, "version", false, "print the version")
+	fs.BoolVar(&o.Licenses, "licenses", false, "print the licence notices of the bundled libraries")
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `Usage:
   dbcc [profile]                          start the UI, optionally connect
@@ -99,6 +102,15 @@ Options:
 		return nil, usagef("unknown format %q", o.Format)
 	}
 	return o, nil
+}
+
+// PrintLicenses writes the licence notices of the Go standard library and
+// the bundled third-party modules (--licenses, spec 7.1, A16).
+func PrintLicenses(w io.Writer) int {
+	if _, err := io.WriteString(w, branding.ThirdPartyLicenses); err != nil {
+		return ExitUsage
+	}
+	return ExitOK
 }
 
 // Headless reports whether the options select headless mode.

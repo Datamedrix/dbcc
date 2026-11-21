@@ -26,7 +26,11 @@ type commandSource interface {
 // CommandLine returns completed command lines for line (spec 9.2): the
 // first word completes to command names; later words by the argument type
 // the command declares (object, path, profile, file; int and string have
-// no candidates). A line whose first word is not a command is SQL and is
+// no candidates), with declared flags taken into account (script.Command.
+// Expect): a word starting with "-" completes to flag names while flags
+// are open, the word after a value flag to the flag's declared values or
+// by its value type, positionals after the flags by their type; "--"
+// ends the flags. A line whose first word is not a command is SQL and is
 // completed like the editor. Each result is the whole new line, ready for
 // tview.InputField's autocomplete list. comp may be nil (commands only).
 func CommandLine(reg *command.Registry, comp *Completer, line string) []string {
@@ -64,46 +68,88 @@ func commandLine(ctx context.Context, reg commandSource, comp *Completer, line s
 	}
 	start := lastWordStart(line)
 	word := unquoteWord(line[start:])
-	// Index of the argument being completed: words before it minus the
-	// command name.
 	before, _ := splitLoose(line[:start])
-	idx := len(before) - 1
-	spec, ok := argAt(cmd.Args, idx)
-	if !ok || comp == nil {
-		return nil
+	var prior []string
+	if len(before) > 1 {
+		prior = before[1:]
 	}
+	e := cmd.Expect(prior)
 	var cands []string
-	switch spec.Type {
-	case script.ArgObject:
-		cands = comp.objectArgs(ctx, word)
-	case script.ArgPath:
-		cands = comp.pathArgs(ctx, word)
-	case script.ArgProfile:
-		if comp.Profiles != nil {
-			cands = filterPrefix(comp.Profiles(), word)
+	switch {
+	case e.FlagAllowed && strings.HasPrefix(word, "-"):
+		if name, val, ok := strings.Cut(strings.TrimLeft(word, "-"), "="); ok {
+			// -t=value
+			if f, found := cmd.Flag(name); found && f.TakesValue() {
+				dashes := word[:len(word)-len(strings.TrimLeft(word, "-"))]
+				for _, c := range flagValues(ctx, comp, f, val) {
+					cands = append(cands, dashes+name+"="+c)
+				}
+			}
+			break
 		}
-	case script.ArgFile:
-		cands = comp.fileArgs(word)
+		cands = flagNames(cmd.Flags, word)
+	case e.FlagValue != "":
+		if f, found := cmd.Flag(e.FlagValue); found {
+			cands = flagValues(ctx, comp, f, word)
+		}
+	default:
+		cands = typedArgs(ctx, comp, e.Type, word)
 	}
 	out := make([]string, 0, len(cands))
 	for _, c := range cands {
 		out = append(out, line[:start]+quoteArg(c))
 	}
+	if len(out) == 0 {
+		return nil
+	}
 	return out
 }
 
-// argAt returns the declared argument for position idx.
-func argAt(args []script.ArgSpec, idx int) (script.ArgSpec, bool) {
-	if idx < 0 || len(args) == 0 {
-		return script.ArgSpec{}, false
+// typedArgs returns the candidates for a word of type t (object, path,
+// profile, file; others have none).
+func typedArgs(ctx context.Context, comp *Completer, t script.ArgType, word string) []string {
+	if comp == nil {
+		return nil
 	}
-	if idx < len(args) {
-		return args[idx], true
+	switch t {
+	case script.ArgObject:
+		return comp.objectArgs(ctx, word)
+	case script.ArgPath:
+		return comp.pathArgs(ctx, word)
+	case script.ArgProfile:
+		if comp.Profiles != nil {
+			return filterPrefix(comp.Profiles(), word)
+		}
+	case script.ArgFile:
+		return comp.fileArgs(word)
 	}
-	if last := args[len(args)-1]; last.Variadic {
-		return last, true
+	return nil
+}
+
+// flagValues completes the value of flag f: its declared values when it
+// has some, otherwise by its value type.
+func flagValues(ctx context.Context, comp *Completer, f script.FlagSpec, word string) []string {
+	if len(f.Values) > 0 {
+		return filterPrefix(f.Values, word)
 	}
-	return script.ArgSpec{}, false
+	return typedArgs(ctx, comp, script.ArgType(f.Type), word)
+}
+
+// flagNames completes a word starting with "-" to the declared flag
+// names, keeping the number of dashes typed ("-" or "--").
+func flagNames(flags []script.FlagSpec, word string) []string {
+	dashes := "-"
+	if strings.HasPrefix(word, "--") {
+		dashes = "--"
+	}
+	prefix := strings.TrimPrefix(word, dashes)
+	var out []string
+	for _, f := range flags {
+		if strings.HasPrefix(f.Name, prefix) {
+			out = append(out, dashes+f.Name)
+		}
+	}
+	return out
 }
 
 // lastWordStart returns the byte offset where the last (possibly empty)

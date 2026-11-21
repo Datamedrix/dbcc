@@ -11,12 +11,17 @@ export DBCC_IT_PG_PW    ?= dbcctest
 export DBCC_IT_MSSQL    ?= 127.0.0.1:11433
 export DBCC_IT_MSSQL_PW ?= Dbcc-test-2026
 
-.PHONY: build test itest static-check test-servers
+.PHONY: build test itest static-check test-servers licenses
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/dbcc ./cmd/dbcc
 
 test:
 	go test ./...
+
+# Licence notices of the compiled-in modules (spec 7.1, A16). Rerun after
+# every go.mod change; a test fails while the file is stale.
+licenses:
+	go run ./internal/branding/gen/licenses -o internal/branding/THIRD_PARTY_LICENSES.txt
 
 itest:
 	go test -tags integration -count=1 ./...

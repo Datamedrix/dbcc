@@ -91,6 +91,7 @@ type App struct {
 	gridPromptClosed func()
 	autosave         *time.Timer // pending scratch autosave
 	maximized        string      // PaneEditor or PaneGrid while F11 is active
+	whereList        bool        // completion list of the WHERE prompt is open
 }
 
 // Run starts the UI and blocks until it quits.
@@ -271,6 +272,7 @@ func (a *App) build() {
 	a.pages = tview.NewPages().AddPage("main", main, true, true)
 	a.tv.SetRoot(a.pages, true)
 	a.initExtras()
+	a.loadCmdHistory()
 	a.tv.SetInputCapture(a.globalKeys)
 	a.tv.SetBeforeDrawFunc(func(tcell.Screen) bool { a.beforeDraw(); return false })
 	a.updateStatus()
@@ -709,16 +711,21 @@ func (a *App) confirmObjectReplace(s *session.Session, tab *editor.Tab) error {
 	if s.Profile.ReadOnly {
 		return exec.ErrReadOnly
 	}
-	if s.Profile.ConfirmWrites {
+	// A21: where replacing has side effects (MySQL: DROP + CREATE is not
+	// atomic and drops routine privileges) the owner is always asked, with
+	// the warning; otherwise only profiles with confirm_writes ask.
+	warning := ""
+	if w, ok := s.Dialect.(dialect.ReplaceWarner); ok {
+		kind := meta.ObjectKind("")
+		if ref, ok := tab.Object.(*script.ObjectRef); ok {
+			kind = ref.Kind
+		}
+		warning = w.ReplaceWarning(kind)
+	}
+	if s.Profile.ConfirmWrites || warning != "" {
 		msg := "Replace " + tab.Title + " on " + s.Profile.Name + "?"
-		if w, ok := s.Dialect.(dialect.ReplaceWarner); ok {
-			kind := meta.ObjectKind("")
-			if ref, ok := tab.Object.(*script.ObjectRef); ok {
-				kind = ref.Kind
-			}
-			if txt := w.ReplaceWarning(kind); txt != "" {
-				msg += "\n\n" + txt
-			}
+		if warning != "" {
+			msg += "\n\n" + warning
 		}
 		ok, _ := (&host{a}).Confirm(msg)
 		if !ok {
@@ -854,8 +861,7 @@ func (a *App) cmdDone(key tcell.Key) {
 		if line == "" {
 			return
 		}
-		a.cmdHistory = append(a.cmdHistory, line)
-		a.histPos = len(a.cmdHistory)
+		a.rememberCmd(line)
 		a.cmd.SetText("")
 		a.do(func() {
 			a.clearError()

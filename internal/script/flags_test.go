@@ -74,10 +74,15 @@ dbcc.command{ name = "cd", args = { "path?" }, run = function(ctx, args, flags)
 
 func TestFlagsDeclaration(t *testing.T) {
 	cases := map[string]string{
-		`dbcc.command{ name = "x", flags = { a = "boolean" }, run = function() end }`:   `unknown type "boolean"`,
-		`dbcc.command{ name = "x", flags = { ["1a"] = "bool" }, run = function() end }`: `invalid flag name`,
-		`dbcc.command{ name = "x", flags = { "a" }, run = function() end }`:             `flags must map`,
-		`dbcc.command{ name = "x", flags = "a", run = function() end }`:                 `"flags" must be a table`,
+		`dbcc.command{ name = "x", flags = { a = "boolean" }, run = function() end }`:                               `unknown type "boolean"`,
+		`dbcc.command{ name = "x", flags = { ["1a"] = "bool" }, run = function() end }`:                             `invalid flag name`,
+		`dbcc.command{ name = "x", flags = { "a" }, run = function() end }`:                                         `flags must map`,
+		`dbcc.command{ name = "x", flags = "a", run = function() end }`:                                             `"flags" must be a table`,
+		`dbcc.command{ name = "x", flags = { a = "bool" }, flag_values = { a = { "x" } }, run = function() end }`:   `flag_values.a: no such flag with a value`,
+		`dbcc.command{ name = "x", flags = { t = "string" }, flag_values = { u = { "x" } }, run = function() end }`: `flag_values.u: no such flag`,
+		`dbcc.command{ name = "x", flags = { t = "string" }, flag_values = { t = "x" }, run = function() end }`:     `flag_values must map`,
+		`dbcc.command{ name = "x", flags = { t = "string" }, flag_values = { t = { 1 } }, run = function() end }`:   `must be a list of strings`,
+		`dbcc.command{ name = "x", flags = { t = "string" }, flag_values = "t", run = function() end }`:             `"flag_values" must be a table`,
 	}
 	for src, want := range cases {
 		rt, _ := newTestRuntime()
@@ -257,5 +262,21 @@ end }`)
 	}
 	if got := h.infos(); got != "0 B\t1023 B\t16.0 KiB\t1.5 MiB\t\t1,234,567" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestFlagValuesDeclaration(t *testing.T) {
+	rt, h := newTestRuntime()
+	defer rt.Close()
+	mustLoad(t, rt, `dbcc.command{ name = "x", args = { "string" }, flags = { t = "string", a = "bool" },
+  flag_values = { t = { "table", "view" } },
+  run = function(ctx, args, flags) ctx:text(tostring(flags.t) .. "|" .. args[1]) end }`)
+	x, _ := rt.Command("x")
+	if f, _ := x.Flag("t"); strings.Join(f.Values, ",") != "table,view" {
+		t.Fatalf("values %q", f.Values)
+	}
+	// The values only drive completion: others are accepted.
+	if err := run(t, rt, "x", "-t", "other", "y"); err != nil || len(h.texts) != 1 || h.texts[0] != "other|y" {
+		t.Fatalf("got %q, %v", h.texts, err)
 	}
 }

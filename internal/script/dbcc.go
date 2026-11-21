@@ -55,7 +55,7 @@ func readOnly(L *lua.LState, t *lua.LTable, name string) *lua.LTable {
 	return p
 }
 
-var commandFields = map[string]bool{"name": true, "usage": true, "help": true, "args": true, "flags": true, "write": true, "run": true}
+var commandFields = map[string]bool{"name": true, "usage": true, "help": true, "args": true, "flags": true, "flag_values": true, "write": true, "run": true}
 
 // dbcc.command{name=, usage=, help=, args=, flags=, write=, run=}
 // run is called as run(ctx, args, flags): args holds the positional
@@ -73,7 +73,7 @@ func (rt *Runtime) luaCommand(L *lua.LState) int {
 	})
 	if len(bad) > 0 {
 		sort.Strings(bad)
-		L.RaiseError("dbcc.command: unknown field(s) %v (name, usage, help, args, flags, write, run)", bad)
+		L.RaiseError("dbcc.command: unknown field(s) %v (name, usage, help, args, flags, flag_values, write, run)", bad)
 	}
 	str := func(field string, required bool) string {
 		v := t.RawGetString(field)
@@ -145,6 +145,47 @@ func (rt *Runtime) luaCommand(L *lua.LState) int {
 		L.RaiseError("dbcc.command %s: %v", c.Name, err)
 	}
 	c.Flags = fspecs
+	switch v := t.RawGetString("flag_values").(type) {
+	case *lua.LTable:
+		var ferr string
+		v.ForEach(func(k, val lua.LValue) {
+			if ferr != "" {
+				return
+			}
+			ks, ok1 := k.(lua.LString)
+			list, ok2 := val.(*lua.LTable)
+			if !ok1 || !ok2 {
+				ferr = "flag_values must map flag names to lists of strings, e.g. { t = { \"table\", \"view\" } }"
+				return
+			}
+			idx := -1
+			for i, f := range c.Flags {
+				if f.Name == string(ks) {
+					idx = i
+				}
+			}
+			if idx < 0 || !c.Flags[idx].TakesValue() {
+				ferr = fmt.Sprintf("flag_values.%s: no such flag with a value", ks)
+				return
+			}
+			var vals []string
+			for i := 1; i <= list.Len(); i++ {
+				s, ok := list.RawGetInt(i).(lua.LString)
+				if !ok {
+					ferr = fmt.Sprintf("flag_values.%s must be a list of strings", ks)
+					return
+				}
+				vals = append(vals, string(s))
+			}
+			c.Flags[idx].Values = vals
+		})
+		if ferr != "" {
+			L.RaiseError("dbcc.command %s: %s", c.Name, ferr)
+		}
+	case *lua.LNilType:
+	default:
+		L.RaiseError("dbcc.command %s: field \"flag_values\" must be a table", c.Name)
+	}
 	if c.Usage == "" {
 		c.Usage = defaultUsage(c.Name, fspecs, specs)
 	}

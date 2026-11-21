@@ -87,6 +87,7 @@ dbcc -p <profile> < file.sql            stdin ist kein Terminal: ohne UI ausfüh
 | `--export-commands <dir>` | Die eingebauten Befehlsskripte in ein Verzeichnis schreiben und beenden. |
 | `--config <file>` | Andere Konfigurationsdatei statt `~/.config/dbcc/config.toml`. |
 | `--version` | Version ausgeben (`dbcc <version>`). |
+| `--licenses` | Lizenzhinweise der Go-Standardbibliothek und aller mitgelieferten Fremdmodule ausgeben und beenden. |
 | `-h`, `--help` | Aufrufhilfe. |
 
 Der Headless-Modus wird gewählt, sobald `-f` oder `-c` angegeben ist **oder stdin kein Terminal ist**. Details und Exit-Codes: [Abschnitt 14](#14-headless-betrieb-und-skripte).
@@ -334,7 +335,7 @@ Scratches funktionieren wie die Scratch-Dateien von DataGrip:
 | PostgreSQL | View, Funktion, Prozedur (jede Überladung): `CREATE OR REPLACE`; Trigger: `CREATE OR REPLACE TRIGGER` ab PostgreSQL 14, sonst (und für Constraint-Trigger) `DROP TRIGGER IF EXISTS … ON tabelle` plus `CREATE`; Materialized view: `DROP MATERIALIZED VIEW IF EXISTS`, `CREATE`, ihre Indizes und ihr Kommentar |
 | SQL Server | GO-Batches: ein Schutz-Batch, der mit `THROW` abbricht, wenn die Sitzung nicht in der Datenbank des Objekts ist; ggf. `SET ANSI_NULLS`/`QUOTED_IDENTIFIER OFF` wie beim Anlegen; der Modultext mit `CREATE OR ALTER` und `[schema].[name]` (vor SQL Server 2016: Stub plus `ALTER`); am Ende die Optionen wieder `ON` |
 
-*Run all* (`F6`) in einem Objekt-Tab ersetzt das Objekt. Das zählt als Schreibvorgang: In schreibgeschützten Profilen ist es gesperrt, bei `confirm_writes` wird gefragt („Replace X on prof?“; auf MySQL mit dem Hinweis, dass `DROP` + `CREATE` nicht atomar ist und Rechte auf der Routine bei `automatic_sp_privileges = 1` – dem Standard – verloren gehen). Nach erfolgreichem Lauf gilt der Tab als gespeichert und die Meldung „replaced <name>“ erscheint. `Alt+R` stellt den Quelltext wie geladen wieder her (als rückgängig machbarer Schritt). Ein Objekt-Tab mit Änderungen fragt beim Schließen und beim Beenden nach.
+*Run all* (`F6`) in einem Objekt-Tab ersetzt das Objekt. Das zählt als Schreibvorgang: In schreibgeschützten Profilen ist es gesperrt, bei `confirm_writes` wird gefragt („Replace X on prof?“). **Auf MySQL wird immer gefragt**, auch ohne `confirm_writes`, mit dem Hinweis, dass `DROP` + `CREATE` nicht atomar ist und Rechte auf der Routine bei `automatic_sp_privileges = 1` – dem Standard – verloren gehen (MariaDB ersetzt mit `CREATE OR REPLACE` und behält die Rechte). Nach erfolgreichem Lauf gilt der Tab als gespeichert und die Meldung „replaced <name>“ erscheint. `Alt+R` stellt den Quelltext wie geladen wieder her (als rückgängig machbarer Schritt). Ein Objekt-Tab mit Änderungen fragt beim Schließen und beim Beenden nach.
 
 ---
 
@@ -424,7 +425,7 @@ Drei Arten, per AND kombinierbar, jede in der Statuszeile sichtbar (`filter: sea
 |---|---|
 | `/` | **Schnellsuche**: ein Text über alle Spalten („enthält“, ohne Groß-/Kleinschreibung). Leere Eingabe entfernt die Suche. |
 | `f` | **Spaltenfilter** auf der aktuellen Spalte. Operatoren (per Ziffer direkt wählbar): `1` contains, `2` starts with, `3` `=`, `4` `<>`, `5` `<`, `6` `<=`, `7` `>`, `8` `>=`, `9` is NULL, `0` is not NULL. Für Operatoren mit Wert folgt ein Eingabefeld; bei `=`, `<>`, `<`, `<=`, `>`, `>=` ist es mit dem Textwert der aktuellen Zelle vorbelegt. |
-| `w` | **Freies `WHERE`**: ein selbst geschriebener Ausdruck. Nur bei table-origin-Ergebnissen. Leere Eingabe entfernt ihn. |
+| `w` | **Freies `WHERE`**: ein selbst geschriebener Ausdruck. Nur bei table-origin-Ergebnissen. Leere Eingabe entfernt ihn. `Ctrl+Space` (bzw. die alternative Vervollständigungstaste) öffnet eine Liste mit den Spalten der Tabelle, Schlüsselwörtern und Funktionen; `↑`/`↓` wählen, `Enter`/`Tab` übernehmen, `Esc` schließt nur die Liste. Die Liste öffnet nie von selbst. |
 | `x` | Filter und Sortierung entfernen: Ist nur eines aktiv, wird es entfernt; sonst erscheint ein Menü (`1`–`9` für den jeweiligen Eintrag, `a` für alle). |
 
 Ausführung:
@@ -538,7 +539,7 @@ Ein Grid der referenzierten Tabelle mit allen Spalten und einer Filterzeile: Tip
 |---|---|
 | `Enter` | Befehl oder SQL ausführen |
 | `Esc` | Zeile leeren und zum Editor wechseln |
-| `Up` / `Down` | Vorheriger / nächster Eintrag der Befehlshistorie dieser Sitzung (als Ring inklusive der leeren Zeile) |
+| `Up` / `Down` | Vorheriger / nächster Eintrag der Befehlshistorie (als Ring inklusive der leeren Zeile). Die Historie bleibt über Neustarts erhalten: `~/.local/state/dbcc/cmdline_history` (letzte 1000 Zeilen; Zeilen mit `IDENTIFIED BY` oder `PASSWORD` werden nicht auf die Platte geschrieben). |
 | `Ctrl+Space` (bzw. `Ctrl+O`) | Vervollständigungsliste; solange sie offen ist, hat sie den Fokus: `Up`/`Down`/`PgUp`/`PgDn` wählen, `Enter`/`Tab` übernehmen, `Esc` schließt nur die Liste, Tippen filtert |
 
 Argumente werden wie in einer Shell zerlegt: `'…'` ist wörtlich, in `"…"` sind `\"` und `\\` Escapes, ein Backslash außerhalb von Anführungszeichen maskiert das nächste Zeichen. Ein abschließendes `;` nach einem Befehl wird toleriert (`pwd;`).
@@ -815,7 +816,8 @@ Die Kandidaten hängen von den Tokens vor dem Cursor ab (token-basierte Heuristi
 | Sonst innerhalb eines Statements | Spalten der im Statement genannten Tabellen, dann Schlüsselwörter und Funktionen des Dialekts |
 | In Strings und Kommentaren | nichts |
 | Kommandozeile, erstes Wort | Befehle |
-| Kommandozeile, Argumente | nach dem deklarierten Argumenttyp: Objekte, Pfade, Profile, Dateien |
+| Kommandozeile, Argumente | nach dem deklarierten Argumenttyp: Objekte, Pfade, Profile, Dateien – auch nach Optionen (`cat -t view ` → Objekte) |
+| Kommandozeile, Optionen | nach `-` die Optionsnamen des Befehls (`tail -` → `-f`, `-i`, `-k`); nach einer Option mit Wert deren deklarierte Werte (`cat -t ` → `table`, `view`, …) bzw. Werte ihres Typs; `--` beendet die Optionen |
 | Kommandozeile mit SQL | wie im Editor |
 
 Metadaten kommen aus einem Cache, der beim ersten Gebrauch je Schema geladen und nach DDL-Statements sowie mit `F5` im Baum verworfen wird. Hinweis: DDL, das auf PostgreSQL oder SQL Server in einer offenen Transaktion der Hauptsitzung noch nicht committet ist, sehen Baum und Vervollständigung erst nach dem Commit (sie lesen über die Hilfsverbindung).
@@ -865,7 +867,7 @@ dbcc -p shop-dev -c "tail -f -i 1 events" --format json
 - **Meldungen** auf stderr: Hinweise von Befehlen, Serverwarnungen (`warning (line N): …`), implizite Commits. Mit `-v` zusätzlich jedes Statement: `-- line N: <text>, 42 rows (12ms)`.
 - **Fehler** auf stderr: `ERROR at line N: <fehler>` plus das eingerückte Statement, bzw. `ERROR: <fehler>`.
 - **Rückfragen:** Schreibende Befehle scheitern ohne `--yes` mit „confirmation required; run with --yes“. In `confirm_writes`-Profilen werden schreibende Statements ohne `--yes` abgelehnt („cancelled by user“).
-- `history` gibt die Liste aus, `edit` das Replace-Skript, `help about` den About-Text. Primitive, die eine Auswahl oder den Editor brauchen, scheitern mit „not available without UI“.
+- `history` gibt die Liste aus, `edit` das Replace-Skript, `help about` den About-Text (mit Hinweis auf `dbcc --licenses`). Primitive, die eine Auswahl oder den Editor brauchen, scheitern mit „not available without UI“.
 - Passwortabfragen laufen über `/dev/tty`.
 - `Ctrl+C` (SIGINT) bricht das laufende Statement ab.
 - **`tail -f` headless:** gibt die letzten n Zeilen aus und dann jede neue Zeile, sobald sie eintrifft – `table` ohne Wiederholung des Kopfes, `csv`/`tsv` als Datensätze, `json` als **JSON Lines** (ein Objekt je Zeile, kein umschließendes Array) – bis SIGINT oder SIGTERM; dann Exit-Code 0. Ein Fehler, der das Folgen beendet (z. B. gelöschte Tabelle), ergibt Exit-Code 1. Headless behält ein folgendes Ergebnis höchstens 3.000 Zeilen im Speicher.
@@ -1010,7 +1012,7 @@ Hinweise: Belegungen des fokussierten Bereichs haben Vorrang vor den globalen. E
 
 ## 16. Tastenreferenz
 
-Die F1-Hilfe zeigt diese Tabellen aus der aktuellen Belegung (also inklusive eigener Änderungen), dazu alle Befehle; das Suchfeld filtert Tasten und Befehle. `F1` oder `Tab` in der Hilfe öffnet die About-Seite, `Esc` schließt, `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End` scrollen. Die About-Seite schließt mit `Esc`.
+Die F1-Hilfe zeigt diese Tabellen aus der aktuellen Belegung (also inklusive eigener Änderungen), dazu alle Befehle; das Suchfeld filtert Tasten und Befehle. `F1` oder `Tab` in der Hilfe öffnet die About-Seite, `Esc` schließt, `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End` scrollen. Auf der About-Seite öffnet `L` die Lizenzen der Fremdbibliotheken (scrollen mit `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End`; `L` oder `Esc` zurück); `Esc` schließt die About-Seite.
 
 **Esc+Ziffer und Alt+Ziffer wirken als F1–F10** (`0` = F10), Esc+Ziffer innerhalb einer Sekunde. Modale Fenster (Formular, Suchfenster, Dialoge) übersteuern die globalen Tasten, solange sie offen sind.
 
@@ -1148,6 +1150,7 @@ Registriert einen Befehl; nur während ein Skript lädt erlaubt. Felder:
 | `help` | string | Beschreibung (Hilfe, `help`) |
 | `args` | Liste von strings | Argumenttypen: `object`, `path`, `profile`, `file`, `int`, `string`; Endung `?` = optional, `...` = beliebig viele (nur als letztes). Pflichtargumente nicht nach optionalen. Steuert Vervollständigung und Prüfung (Anzahl, `int`). |
 | `flags` | Tabelle Name → Typ | `bool` (Schalter) oder einer der Argumenttypen (Flag mit Wert; `int` wird geprüft). Namen: Buchstabe, dann Buchstaben, Ziffern, `_`, `-`. |
+| `flag_values` | Tabelle Flag → Liste von strings | Optional: Werte, die die Vervollständigung für ein Flag mit Wert anbietet (z. B. `flag_values = { t = { "table", "view" } }` bei `cat`). Andere Werte bleiben erlaubt. |
 | `write` | boolean | `true`: Befehl schreibt – in schreibgeschützten Profilen gesperrt; `ctx:exec` zeigt jedes Statement und fragt nach |
 | `run` | function, Pflicht | `run(ctx, args, flags)`: `args` sind die Positionsargumente als Strings, `flags` die gegebenen Flags (Schalter `true`, Werte als String) |
 
@@ -1403,3 +1406,5 @@ Ein Produkt der **Datamedrix GmbH**.
 Kontakt: Anton Grünberg · a.gruenberg@datamedrix.com · https://www.datamedrix.com
 
 Die About-Seite (F1, dann `F1` oder `Tab`; oder `help about`) zeigt Logo, Version, Build-Datum und Kontaktdaten.
+
+**Lizenzen der Fremdbibliotheken:** `L` auf der About-Seite zeigt die Lizenzhinweise der mitgelieferten Bibliotheken: zuerst eine Übersicht (Modul, Version, Lizenz), danach jeden vollständigen Lizenztext. `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End` scrollen, `L` oder `Esc` führt zurück zur About-Seite. Ohne UI gibt `dbcc --licenses` denselben Text aus. Der Text wird mit `make licenses` aus dem Modul-Cache erzeugt (`internal/branding/THIRD_PARTY_LICENSES.txt`); ein Test schlägt fehl, wenn sich `go.mod` ändert und die Datei nicht neu erzeugt wurde. Der MySQL-Treiber (`github.com/go-sql-driver/mysql`) steht unter MPL-2.0; dbcc verwendet ihn unverändert, sein Quellcode ist unter https://github.com/go-sql-driver/mysql verfügbar.

@@ -176,3 +176,33 @@ func TestM8ManualTransactionAndReadOnly(t *testing.T) {
 		})
 	}
 }
+
+// TestWhereCompletion: in the free WHERE prompt (w) Ctrl+Space completes
+// columns of the table; the list never opens by itself.
+func TestWhereCompletion(t *testing.T) {
+	for server, addr := range itServers(t) {
+		t.Run(server, func(t *testing.T) {
+			cfg := itProfile(t, "it", addr, nil)
+			seed(t, cfg, "it")
+			a, scr, stop := startApp(t, cfg, Options{NoSplash: true, Profile: "it"})
+			defer stop()
+			waitFor(t, a, scr, "information_schema", 5*time.Second)
+			keys(scr, tcell.KeyF9, "ll dbccui.items", tcell.KeyEnter)
+			waitFor(t, a, scr, "second", 5*time.Second)
+			keys(scr, "w", "la")
+			lines := waitFor(t, a, scr, "WHERE la", 3*time.Second)
+			if strings.Contains(strings.Join(lines, "\n"), "label") {
+				t.Fatal("completion list opened without Ctrl+Space")
+			}
+			scr.InjectKey(tcell.KeyCtrlSpace, 0, tcell.ModCtrl)
+			waitFor(t, a, scr, "label", 3*time.Second)
+			keys(scr, tcell.KeyEnter) // accept
+			waitFor(t, a, scr, "WHERE label", 3*time.Second)
+			keys(scr, " = 'first'", tcell.KeyEnter) // apply
+			lines = waitFor(t, a, scr, "filter:", 5*time.Second)
+			if all := strings.Join(lines, "\n"); !strings.Contains(all, "first") || strings.Contains(all, "second") {
+				t.Fatalf("WHERE not applied:\n%s", all)
+			}
+		})
+	}
+}

@@ -88,6 +88,9 @@ const FlagBool FlagType = "bool"
 type FlagSpec struct {
 	Name string
 	Type FlagType
+	// Values are the suggested values of a value flag (declared with
+	// flag_values); they only drive completion, any value is accepted.
+	Values []string
 }
 
 // TakesValue reports whether the flag is followed by a value.
