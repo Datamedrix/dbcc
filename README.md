@@ -352,7 +352,7 @@ Scratches work like DataGrip's scratch files:
 | PostgreSQL | View, function, procedure (every overload): `CREATE OR REPLACE`; trigger: `CREATE OR REPLACE TRIGGER` on PostgreSQL 14+, otherwise (and for constraint triggers) `DROP TRIGGER IF EXISTS … ON table` plus `CREATE`; materialized view: `DROP MATERIALIZED VIEW IF EXISTS`, `CREATE`, its indexes and its comment |
 | SQL Server | GO batches: a guard batch that stops with `THROW` unless the session is in the object's database; `SET ANSI_NULLS`/`QUOTED_IDENTIFIER OFF` where the module was created that way; the module text with `CREATE OR ALTER` and `[schema].[name]` (before SQL Server 2016: a stub plus `ALTER`); finally the options back `ON` |
 
-*Run all* (`F6`) in an object tab replaces the object. It counts as a write: blocked in read-only profiles, and with `confirm_writes` it asks ("Replace X on prof?"). **On MySQL it always asks**, also without `confirm_writes`, with the note that `DROP` + `CREATE` is not atomic and that privileges granted on the routine are removed while `automatic_sp_privileges = 1`, the default (MariaDB replaces with `CREATE OR REPLACE` and keeps them). After a successful run the tab is marked saved and the log says "replaced <name>". `Alt+R` restores the source as loaded (as an undoable step). Closing a changed object tab, or quitting, asks first.
+*Run all* (`F6`) in an object tab replaces the object. It counts as a write: blocked in read-only profiles, and with `confirm_writes` it asks ("Replace X on prof?"). **On MySQL it always asks**, also without `confirm_writes`, with the note that `DROP` + `CREATE` is not atomic and that privileges granted on the routine are removed while `automatic_sp_privileges = 1`, the default (MariaDB replaces with `CREATE OR REPLACE` and keeps them). After a successful run the tab is marked saved and the log says "replaced \<name\>". `Alt+R` restores the source as loaded (as an undoable step). Closing a changed object tab, or quitting, asks first.
 
 ---
 
@@ -582,6 +582,7 @@ Commands that write (`cp`, `mv`, `kill`) show the SQL before running it, ask for
 | [`kill [-q] <id>`](#kill) | Terminate a session | yes |
 | [`export [-f] <file.csv\|file.json>`](#export) | Write the active result to a file | no |
 | [`history [n]`](#history) | Statement history | no |
+| [`reload`](#reload) | Reload the commands (install your own scripts at run time) | no |
 | [`help [command\|about]`](#help) | Help, About page | no |
 
 Objects can be given as name, qualified name or path (see [Paths and navigation](#paths-and-navigation)). Commands that show data (`ll`, `head`, `tail`, `wc`) accept tables, views and materialized views.
@@ -795,6 +796,14 @@ history [n]
 ```
 
 The last `n` executed statements (default 100). In the UI a filterable list appears (newest first, with time, path and an `[error]` marker); `Enter` loads the statement into the current scratch tab, `Esc` closes. Without UI the list is printed (oldest first) with `#`, `time`, `profile`, `path`, `ms`, `outcome`, `statement`.
+
+### reload
+
+```text
+reload
+```
+
+Reloads all commands – the built-in ones and the user scripts from `~/.config/dbcc/commands` (or `$XDG_CONFIG_HOME/dbcc/commands`) – without restarting dbcc; connections, transactions, tabs and results stay. This is how you install a new or changed script at run time: save the file, `F9`, `reload`. The message log reports `commands reloaded: N commands (user scripts from <dir>)`; a broken script is reported as `user command script skipped: <path>: <error>` and skipped (a built-in command it replaces then stays active). UI only; headless, every invocation loads the scripts anyway. Details: [Installing scripts at run time](#installing-scripts-at-run-time-reload).
 
 ### help
 
@@ -1127,119 +1136,385 @@ Fixed: `Esc` clears the line and goes to the editor.
 
 ## Writing your own commands in Lua
 
-Every dbcc command – `cd`, `ll`, `cp` and `cat` included – is a Lua script. Go only provides primitives. The default scripts are embedded in the binary and double as examples.
+Every dbcc command – `cd`, `ll`, `cp` and `cat` included – is a Lua script. Go only provides primitives (run queries, resolve objects, show results, ask the user …); what a command does is written entirely in its script. Your own scripts add commands or replace the built-in ones. They behave like built-in commands: completion, `help`, headless mode, keys and tree actions work without any extra step.
+
+In this chapter:
+
+- [Where the scripts are](#where-the-scripts-are)
+- [Loading, replacing, fallback](#loading-replacing-fallback)
+- [Installing scripts at run time: `reload`](#installing-scripts-at-run-time-reload)
+- [Step by step: your first command](#step-by-step-your-first-command)
+- [Declaring a command: `dbcc.command`](#declaring-a-command-dbcccommand)
+- [Arguments and flags at invocation](#arguments-and-flags-at-invocation)
+- [Commands that write (`write = true`)](#commands-that-write-write--true)
+- [The context `ctx`](#the-context-ctx)
+- [Primitives](#primitives)
+- [Parameters and placeholders](#parameters-and-placeholders)
+- [Behaviour without UI](#behaviour-without-ui)
+- [Metadata table of `ctx:meta`](#metadata-table-of-ctxmeta)
+- [`dbcc.commands()` and `dbcc.fmt`](#dbcccommands-and-dbccfmt)
+- [Errors and exit codes](#errors-and-exit-codes)
+- [Sandbox](#sandbox)
+- [Examples](#examples)
+- [Tips: testing, debugging, quoting, safety](#tips-testing-debugging-quoting-safety)
+
+### Where the scripts are
+
+**Built-in commands** are embedded in the binary, so they exist on every machine you copy the single `dbcc` file to. Their source is in the repository under `internal/script/commands/` – one file per command, the file name is the command name:
+
+| File | Command | File | Command |
+|---|---|---|---|
+| `cat.lua` | [`cat`](#cat) | `ll.lua` | [`ll`](#ll) |
+| `cd.lua` | [`cd`](#cd) | `ls.lua` | [`ls`](#ls) |
+| `cp.lua` | [`cp`](#cp) (writes) | `mv.lua` | [`mv`](#mv) (writes) |
+| `du.lua` | [`du`](#du) | `ps.lua` | [`ps`](#ps) |
+| `edit.lua` | [`edit`](#edit) | `pwd.lua` | [`pwd`](#pwd) |
+| `export.lua` | [`export`](#export) | `reload.lua` | [`reload`](#reload) |
+| `grep.lua` | [`grep`](#grep) | `tail.lua` | [`tail`](#tail) |
+| `head.lua` | [`head`](#head) | `wc.lua` | [`wc`](#wc) |
+| `help.lua` | [`help`](#help) | `kill.lua` | [`kill`](#kill) (writes) |
+| `history.lua` | [`history`](#history) | | |
+
+The built-in scripts use only the public API described below – they are the best examples. Without the repository, get them with
+
+```sh
+dbcc --export-commands ~/dbcc-commands     # writes every built-in script there
+```
+
+The directory is created if needed. `--export-commands` never overwrites: if even one target file exists, nothing is written (exit code 2) – so choose an empty or new directory.
+
+**Your own commands** are `*.lua` files in the user directory
+
+```text
+$XDG_CONFIG_HOME/dbcc/commands/*.lua     # when XDG_CONFIG_HOME is set
+~/.config/dbcc/commands/*.lua            # otherwise
+```
+
+Create the directory yourself (`mkdir -p ~/.config/dbcc/commands`); a missing directory is not an error. Subdirectories and other file extensions are not read. One file may register several commands; one command per file, named after the command, is the usual and clearer way. `help <command>` shows where a command comes from (`source: embedded:head.lua` or the full path of the file).
 
 ### Loading, replacing, fallback
 
-- The embedded scripts load first, then the user scripts `~/.config/dbcc/commands/*.lua` (or `$XDG_CONFIG_HOME/dbcc/commands`) in name order.
-- A user command with the name of a default command **replaces** it – everywhere, including keys and tree actions, which invoke commands by name.
-- A script that fails to load is reported in the message log and skipped; a default of the same name then stays active, so a broken `cd.lua` cannot lock you out. A script's registrations take effect only if the whole script loads without error.
-- Loading a script may take at most 5 seconds.
-- `dbcc --no-user-commands` loads the defaults only. `dbcc --export-commands <dir>` writes every embedded script to a directory as a starting point (creates it; never overwrites – if any target file exists, nothing is written).
-- `help <command>` shows where a command comes from (`embedded:cat.lua` or the file path).
+- **When:** At start dbcc loads all built-in scripts first, then the user scripts in alphabetical order of their file names. In the UI, [`reload`](#installing-scripts-at-run-time-reload) loads everything again without a restart. Headless, every `dbcc -c …` loads the scripts afresh – saving the file is enough there.
+- **Replacing:** A user command with the name of a built-in one **replaces** it – everywhere, including keys and tree actions, which invoke commands by name (your own `ll.lua` also changes what `Enter` on a table in the tree shows; `F3`/`F4` in the tree run `cat` and `edit`). If two user files register the same name, the alphabetically later one wins.
+- **Fallback:** A script that does not load (syntax error, run-time error while loading, invalid declaration, timeout) is reported in the message log (headless: stderr) – `user command script skipped: <path>: <error>` – and skipped. A built-in command of the same name then stays active, so a broken `cd.lua` cannot lock you out. A script's registrations take effect only if the whole script loads without error: a script that calls `dbcc.command{…}` and fails afterwards registers nothing.
+- **Time limit:** Loading a script (its top-level code, not the `run` function) may take at most 5 seconds; otherwise: `loading took longer than 5s`.
+- **Built-ins only:** `dbcc --no-user-commands` loads no user scripts – the way out when one of your scripts gets in the way. It also applies to `reload` in that session.
 
-### Sandbox
+A broken replacement of `head`, headless (shortened):
 
-Lua 5.1 (gopher-lua). Only the `base`, `table`, `string` and `math` libraries are loaded; `dofile`, `loadfile`, `require`, `module` and `newproxy` are removed. **No `os`, no `io`, no `debug`.** `load`/`loadstring` remain (code from strings only). File access happens only through primitives such as `ctx:export`. `print(...)` writes to the message log (headless: stderr). Every script gets its own global environment; the API tables `dbcc` and `dbcc.fmt` are read-only.
+```text
+$ dbcc -p doc -c "head logs 1"
+warning: user command script skipped: ~/.config/dbcc/commands/head.lua: ~/.config/dbcc/commands/head.lua line:21(column:7) near '=':   syntax error
 
-### `dbcc.command{…}`
+id | level | msg     | created
+---+-------+---------+--------------------
+ 4 | info  | cleanup | 2026-06-01 09:00:00
+```
 
-Registers a command; allowed only while a script loads.
+The warning goes to stderr; the result comes from the built-in `head`.
+
+### Installing scripts at run time: `reload`
+
+New or changed scripts can be installed while dbcc runs – without a restart and without losing connections, transactions, editor tabs or results:
+
+1. Put the `.lua` file into the user directory, or change it there (in a second terminal, for example).
+2. In dbcc press `F9` (command line) and type `reload`.
+3. The new command is available at once – with completion and `help`.
+
+`reload` builds a new Lua runtime, loads the built-in scripts and then the user scripts exactly as at start, and then replaces the old runtime. Consequences:
+
+- A broken script is reported and skipped; if it replaces a built-in command, the built-in one stays active. All other commands keep working.
+- State that scripts hold at top level (local variables, tables) starts afresh.
+- Deleted files are gone: a removed user command disappears after `reload`, a removed replacement brings the built-in command back.
+- Headless there is no `reload` (it fails with "only available in the UI (headless mode loads the commands at every start)"), and none is needed.
+
+This is what the message log shows (a real session: `tpl` is typed before `tpl.lua` exists – dbcc then takes it for SQL –, then the file is created and `reload` is run):
+
+```text
+00:40:01 line 1 tpl  ERROR Error 1064 (42000): You have an error in your SQL syntax; …
+00:40:02 reloading commands; user scripts are read from /home/anna/.config/dbcc/commands
+00:40:02 commands reloaded: 26 commands (user scripts from /home/anna/.config/dbcc/commands)
+00:40:12 tpl: template for settings in the editor
+```
+
+With a broken script in the directory:
+
+```text
+00:40:18 reloading commands; user scripts are read from /home/anna/.config/dbcc/commands
+00:40:19 ERROR user command script skipped: /home/anna/.config/dbcc/commands/oops.lua: … syntax error
+00:40:19 commands reloaded: 26 commands (user scripts from /home/anna/.config/dbcc/commands)
+```
+
+Scripts can trigger the reload themselves with [`ctx:reload_commands()`](#primitives).
+
+### Step by step: your first command
+
+1. Create the directory:
+
+   ```sh
+   mkdir -p ~/.config/dbcc/commands
+   ```
+
+2. Write the file `~/.config/dbcc/commands/hello.lua`:
+
+   ```lua
+   -- hello.lua: the smallest useful command
+   dbcc.command{
+     name  = "hello",
+     help  = "Greet someone and show the current path",
+     args  = { "string?" },
+     run = function(ctx, args)
+       local who = args[1] or "world"
+       ctx:message("hello " .. who .. ", you are at " .. ctx.path.str
+         .. " (" .. (ctx.dialect or "not connected") .. ")")
+     end,
+   }
+   ```
+
+   `dbcc.command{…}` registers the command while the script loads. `run` runs on every invocation; `ctx` is the context with all primitives, `args` are the arguments as strings.
+
+3. Test it without UI – the fastest way, because every invocation loads the scripts again:
+
+   ```text
+   $ dbcc -p doc -c "hello"
+   hello world, you are at /doc/dbcc_doc (mariadb)
+   $ dbcc -p doc -c "hello Anna"
+   hello Anna, you are at /doc/dbcc_doc (mariadb)
+   $ dbcc -p doc -c "help hello"
+   usage: hello [string]
+
+   Greet someone and show the current path
+
+   arguments: string?
+
+   source: /home/anna/.config/dbcc/commands/hello.lua
+   ```
+
+   dbcc generated the usage line from `args`. Headless, `ctx:message` writes to stderr; in the UI to the message log.
+
+4. In the running UI: `F9`, `reload`, then `hello` – or restart dbcc.
+
+The following sections describe every field and every primitive; [worked examples](#examples) follow after them.
+
+### Declaring a command: `dbcc.command`
+
+`dbcc.command{…}` may only be called while a script loads (at top level, not inside `run`); otherwise: "dbcc.command may only be called while a command script loads". Fields:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | string, required | `^[a-z][a-z0-9_-]*$`; `dbcc` is reserved |
-| `usage` | string | Usage line; generated from flags and args when omitted |
-| `help` | string | Description (help overlay, `help`) |
-| `args` | list of strings | Argument types: `object`, `path`, `profile`, `file`, `int`, `string`; suffix `?` = optional, `...` = zero or more (last only). A required argument cannot follow an optional one. Drives completion and the arity/`int` check. |
-| `flags` | table name → type | `bool` (switch) or one of the argument types (flag with value; `int` is checked). Names: a letter, then letters, digits, `_`, `-`. |
-| `flag_values` | table flag → list of strings | Optional: values offered by completion for a value flag (e.g. `flag_values = { t = { "table", "view" } }` in `cat`). Other values are still accepted. |
-| `write` | boolean | `true`: the command writes – blocked in read-only profiles; `ctx:exec` shows each statement and asks |
-| `run` | function, required | `run(ctx, args, flags)`: `args` are the positional arguments as strings, `flags` the given flags (switches `true`, values as strings) |
+| `name` | string, required | `^[a-z][a-z0-9_-]*$` (lower-case letters, digits, `_`, `-`; starts with a letter). `dbcc` is reserved (T-SQL `DBCC` statements pass through as SQL). |
+| `usage` | string | Usage line for help and error messages. Generated when absent: `name [-a] [-t string] <object> [int] [string ...]` |
+| `help` | string | Description (command list of `help`, `help <command>`, help overlay) |
+| `args` | list of strings | Positional arguments with a type: `object`, `path`, `profile`, `file`, `int`, `string`. Suffix `?` = optional, `...` = any number (also none; last only). Required arguments may not follow optional ones. The type drives completion (objects, paths, profiles, files) and the check (`int`). |
+| `flags` | table name → type | `bool` (a switch without value) or one of the argument types (a flag with a value; `int` is checked). Names: a letter, then letters, digits, `_`, `-`. |
+| `flag_values` | table flag → list of strings | Values that completion offers for a value flag (e.g. `flag_values = { t = { "table", "view" } }` in `cat`). Other values stay allowed. |
+| `write` | boolean | `true`: the command writes – see [Commands that write](#commands-that-write-write--true) |
+| `run` | function, required | `run(ctx, args, flags)` |
 
-Other fields are an error. Report command errors with `error("text", 0)` (the `0` suppresses the position).
+Any invalid declaration fails the whole script. The messages (preceded by file and line):
 
-### `dbcc.commands()` and `dbcc.fmt`
-
-| Function | Returns |
+| Error | Message |
 |---|---|
-| `dbcc.commands()` | every command, sorted: `{name=, usage=, help=, args={…}, flags={name=type}, write=, source=, default=}` |
-| `dbcc.fmt.table(headers, rows)` | an aligned text table as a string; `nil` = `NULL`; all-numeric columns right-aligned |
-| `dbcc.fmt.size(bytes)` | `"512 B"`, `"16.0 KiB"`, `"1.5 MiB"`, … (`nil` → `""`) |
-| `dbcc.fmt.count(n)` | `"1,234,567"` |
+| unknown field | `dbcc.command: unknown field(s) [descr] (name, usage, help, args, flags, flag_values, write, run)` |
+| invalid name | `dbcc.command: invalid command name "B2" (lower-case letters, digits, '_' and '-')` |
+| name `dbcc` | `dbcc.command: the name "dbcc" is reserved: DBCC statements are plain SQL` |
+| wrong field type | `field "name" must be a string, got number`, `field "write" must be a boolean`, `field "args" must be a list` … |
+| `run` missing | `dbcc.command b8: field "run" must be a function` |
+| unknown argument type | `args[1]: unknown type "number" (object, path, profile, file, int, string)` |
+| order | `args[2]: a required argument cannot follow an optional one`, `args[1]: a variadic argument must be the last one` |
+| unknown flag type | `flags.all: unknown type "boolean" (bool, object, path, profile, file, int, string)` |
+| `flag_values` without a matching flag | `flag_values.x: no such flag with a value` |
+
+### Arguments and flags at invocation
+
+`run(ctx, args, flags)` receives:
+
+- `args`: the positional arguments as a list of **strings** (`int` arguments too – convert them with `tonumber`). Missing optional arguments are `nil`.
+- `flags`: the flags given; switches are `true`, value flags hold the value as a string. Flags not given are absent (`nil`).
+
+The line is split into words like in a shell: blanks separate, `'…'` and `"…"` group (inside `"…"`, `\` escapes `"` or `\`), `\` outside escapes the next character. A trailing `;` is ignored. Then:
+
+- Flags come **before** the positional arguments. `-a` and `--a` are the same. Values: `-t value`, `-t=value`, `--t=value`. Switches cannot be bundled (`-ab` is the flag `ab`).
+- The first word that does not look like a flag ends the flags, and so does `--` (everything after it is positional). `-` alone and negative numbers (`-5`) are positional.
+- A command **without** declared flags takes every word as a positional argument, `-x` included.
+- Checked **before** `run`: unknown flags, a value on a switch, a missing value, `int` values, the number of arguments, `int` arguments. These are invocation errors (headless exit code 2):
+
+```text
+$ dbcc -p doc -c "counts -x"
+ERROR: counts: unknown flag -x; usage: counts [-m min] [path]
+$ dbcc -p doc -c "latest logs x"
+ERROR: latest: argument 2 must be an integer, got "x"; usage: latest <table> [n]
+$ dbcc -p doc -c "setting"
+ERROR: setting: usage: setting <name>
+```
+
+Other messages: `flag -n takes no value`, `flag -m needs a int value`, `flag -m must be an integer, got "x"`.
+
+### Commands that write (`write = true`)
+
+`write = true` marks a command that changes data or structure (built-in: `cp`, `mv`, `kill`). Effects:
+
+- **Read-only profiles:** If the current path is in a profile with `read_only = true`, the command does not start at all: `archive-logs: writes and is blocked in the read-only profile docro`. `ctx:exec` on another read-only connection (`ctx:on(…)`) is rejected as well.
+- **Every `ctx:exec` is confirmed:** Before each statement a yes/no dialog "`<command>` will run on `<profile>`:" shows the statement. "No" aborts the command with "cancelled by user"; whatever ran before stays (with autocommit). The dialog shows the statement with its placeholders (`?`), not the parameter values.
+- **Asking once:** If the user says yes to a `ctx:confirm(…)` in this invocation, the following `ctx:exec` calls do not ask again. That way all statements (and the values) are shown in one question – as `cp` does, see [example d](#d-a-write-command-with-parameters-and-confirmation).
+- **`confirm_writes`** of the profile does not ask a second time for a statement confirmed this way.
+- **Headless:** Without `--yes` the confirmation fails with `confirmation required; run with --yes:` followed by the question (exit code 1); with `--yes` every confirmation counts as yes, with `-v` also logged (`-- confirmed (--yes): …`).
+- `ctx:query` (reading) is never confirmed.
+
+Commands without `write = true` can write with `ctx:exec` too; then only the safeguards that apply to typed SQL are in effect (the profile's read-only guard: "read-only profile: statement rejected", `confirm_writes`). For anything that changes data, `write = true` is right.
 
 ### The context `ctx`
 
-`ctx` is valid only while its command runs; always call methods with a colon (`ctx:query(…)`).
+`ctx` is valid only while its command runs (a `ctx` kept in a variable fails later with "ctx is only valid while its command runs"). Always call methods with a colon: `ctx:query(…)`; `ctx.query(…)` fails with "call it with a colon".
 
-Fields:
+Fields (read only):
 
 | Field | Content |
 |---|---|
 | `ctx.command` | name of the running command |
-| `ctx.path` | current path: `{conn=, database=, schema=, str="/c/d/s", level="root"\|"connection"\|"database"\|"schema"}`; absent parts are `nil`; `tostring(ctx.path)` is `str` |
-| `ctx.dialect` | `"mysql"`, `"mariadb"`, `"postgres"`, `"mssql"`, or `nil` when not connected |
-| `ctx.has_schemas` | `true` on PostgreSQL and SQL Server |
-| `ctx.profile` | `{name=, driver=, database=, read_only=, autocommit=, confirm_writes=}` or `nil` |
+| `ctx.path` | current path: `{conn=, database=, schema=, str="/c/d/s", level=}`; `level` is `"root"`, `"connection"`, `"database"` or `"schema"`; missing parts are `nil`; `tostring(ctx.path)` = `str` |
+| `ctx.dialect` | `"mysql"`, `"mariadb"`, `"postgres"`, `"mssql"`, or `nil` (not connected, path `/`) |
+| `ctx.has_schemas` | `true` on PostgreSQL and SQL Server (paths with a schema level) |
+| `ctx.profile` | `{name=, driver=, database=, read_only=, autocommit=, confirm_writes=}` or `nil`; `driver` is the configured value (`mysql` for MariaDB too), `database` only when set in the profile |
 | `ctx.conn` | only on a context bound with `ctx:on`: the connection name |
+
+Example (real output on MariaDB, profile `doc` with `database = "dbcc_doc"`): `ctx.path.str` = `/doc/dbcc_doc`, `ctx.path.level` = `database`, `ctx.dialect` = `mariadb`, `ctx.profile.driver` = `mysql`, `ctx.has_schemas` = `false`.
+
+**`ctx:on(target)`** returns a context bound to another connection: `target` is a profile name, an object from `ctx:resolve` or a path table; the connection is opened if needed. On a bound context, `dialect`, `has_schemas`, `profile`, all SQL helpers (`quote`, `limit`) and execution (`query`, `exec`, `grid`, `resolve` with plain names) refer to that connection; `ctx.path` stays the current path. If `target` is the current connection, the context follows it like `ctx`. Rule of thumb: **always address objects through `ctx:on(obj)`**, because an object from the tree or an absolute path may live on another connection.
+
+### Primitives
+
+All primitives block until their database work is done and raise a Lua error on failure (see [Errors](#errors-and-exit-codes)); `pcall` catches it.
 
 **Navigation and metadata:**
 
-| Method | Returns / does |
+| Method | Returns / effect |
 |---|---|
-| `ctx:chdir(path)` | changes the path (like `cd`: `USE` or reconnect) and updates `ctx.path`, `ctx.dialect`, `ctx.profile`; returns the new path |
-| `ctx:abspath(path)` | resolves a path without side effects (`"."` = current); returns a path table |
-| `ctx:objects(path, kinds)` | at `/conn`: databases; at a database of a schema dialect: schemas; otherwise the objects, filtered by `kinds` (string or list: `database`, `schema`, `table`, `view`, `materialized view`, `procedure`, `function`, `trigger`, `event`, `sequence`). Elements `{name=, kind=, comment=, system=}`. An error at `/` (use `ctx:profiles()`) |
-| `ctx:profiles()` | every profile, sorted: `{name=, driver=, host=, port=, socket=, user=, database=, read_only=, autocommit=, confirm_writes=, open=, current=}` |
-| `ctx:resolve(name, kinds)` | resolves an object name or path: `{name=, kind=, comment=, conn=, sql=, parts={conn=, database=, schema=, object=}}`; `sql` is the qualified, quoted name; `tostring(obj)` is `sql` |
-| `ctx:on(target)` | a context bound to the connection of `target` (profile name, resolved object or path table; opened when needed). Its SQL helpers and execution primitives run there; `ctx.path` stays the current path |
-| `ctx:meta(obj)` | metadata of a table, view or materialized view (name or object), see below |
-| `ctx:source(obj, kind)` | source of a view, procedure, function, trigger or event (`kind` optional) |
+| `ctx:chdir(path)` | changes the path like `cd` (`USE` or reconnect, asking first if a transaction is open); updates `ctx.path`, `ctx.dialect`, `ctx.profile`; returns the new path (a path table) |
+| `ctx:abspath(path)` | resolves a path without side effects (`"."` or `nil` = current, `".."`, relative and absolute paths); returns a path table. `path` may also be a path table |
+| `ctx:objects(path, kinds)` | at `/conn`: the databases; at a database of a schema dialect: the schemas; otherwise the objects of the database or schema, filtered by `kinds` (a string or a list: `database`, `schema`, `table`, `view`, `materialized view`, `procedure`, `function`, `trigger`, `event`, `sequence`; `nil` = all). Elements `{name=, kind=, comment=, system=}`. At `/` an error: use `ctx:profiles()` there |
+| `ctx:profiles()` | all profiles of the configuration, sorted by name: `{name=, driver=, host=, port=, socket=, user=, database=, read_only=, autocommit=, confirm_writes=, open=, current=}`; unset texts are `""`, `port` is a number, `open` = connection open, `current` = current profile |
+| `ctx:resolve(name, kinds)` | resolves an object name, see below |
+| `ctx:on(target)` | context bound to the connection of `target` (see above) |
+| `ctx:meta(obj)` | metadata of a table, view or materialized view (`obj` = name or object), see [metadata table](#metadata-table-of-ctxmeta) |
+| `ctx:source(obj, kind)` | source text of a view, procedure, function, trigger or event (`kind` optional, restricts the lookup) |
+
+`ctx:resolve(name, kinds)` accepts:
+
+- a plain name (`logs`) – looked up in the current database or schema;
+- qualified names: `db.obj` (MySQL/MariaDB), `schema.obj` and `db.schema.obj` (PostgreSQL, SQL Server); parts may be quoted (`` `my table` ``, `"x.y"`, `[a b]`; doubled quotes escape themselves);
+- paths whose last segment is the object: `/conn/db/obj`, `/conn/db/schema/obj`, `../otherdb/obj`. A path may point to another profile; its connection is opened.
+
+The lookup is exact, otherwise case-insensitive when that is unambiguous (`LOGS` finds `logs`). `kinds` (as for `ctx:objects`) restricts the lookup; an object of another kind then counts as not found. Returns:
+
+```text
+{ name="logs", kind="table", comment="", conn="doc", sql="`dbcc_doc`.`logs`",
+  parts={ conn="doc", database="dbcc_doc", schema=nil, object="logs" } }
+```
+
+`sql` is the fully qualified, quoted name – ready to use in SQL; `tostring(obj)` = `obj.sql`. Errors: `no such object: x in /doc/dbcc_doc`, `"a.b.c": too many name parts (mariadb has no schema level)`, `"x": no database selected; cd into a database or qualify the name`, `not connected: cd /<profile> first`.
+
+Real resolutions on MariaDB (current path `/doc/dbcc_doc`):
+
+| Input | `obj.sql` |
+|---|---|
+| `logs`, `` `logs` ``, `LOGS`, `dbcc_doc.logs` | `` `dbcc_doc`.`logs` `` |
+| `/doc/shop/orders`, `../shop/orders` | `` `shop`.`orders` `` |
 
 **SQL helpers:**
 
 | Method | Returns |
 |---|---|
-| `ctx:quote(ident)` | the identifier quoted for the dialect |
-| `ctx:limit(sql, n)` | a dialect-specific row limit; with a top-level `ORDER BY` the order decides which rows remain (MySQL/MariaDB/PostgreSQL append `LIMIT n`, SQL Server injects `TOP (n)`), otherwise the query is wrapped |
-| `ctx:copy_sql(src, dst, opts)` | `stmts, target`: the statements that copy `src` to `dst`; `opts.structure = true` selects the `cp -a` variant; `target` is an object-like table for the new table |
-| `ctx:replace_script(obj, kind)` | a runnable script that re-creates the object from its current source |
+| `ctx:quote(ident)` | the identifier quoted for the dialect: `` `we``ird` `` (MySQL/MariaDB), `"we""ird"` (PostgreSQL), `[we]]ird]` (SQL Server) |
+| `ctx:limit(sql, n)` | the query with a row limit `n` (≥ 0). MySQL/MariaDB/PostgreSQL: if the query has a top-level `ORDER BY`, `LIMIT n` is appended (`SELECT * FROM t ORDER BY a LIMIT 5`), otherwise it is wrapped (`SELECT * FROM (SELECT * FROM t) AS dbcc_limit LIMIT 5`). SQL Server: `TOP (n)` is inserted into the main `SELECT` (`SELECT TOP (5) * FROM t ORDER BY a`); with `UNION`, `OFFSET` or an existing `TOP` the query is wrapped |
+| `ctx:copy_sql(src, dst, opts)` | `stmts, target`: the list of statements that copy `src` (name or object) into the new table `dst` (as `cp` does); `opts.structure = true` selects the `cp -a` variant with keys and indexes. `target` is an object-like table of the new table (`name`, `kind`, `conn`, `sql`, `parts`). Runs nothing |
+| `ctx:replace_script(obj, kind)` | runnable script that re-creates the object from its current source (as `edit` does), see [object tabs](#object-tabs-and-replace-scripts) |
 
 **Execution:**
 
-| Method | Returns / does |
+| Method | Returns / effect |
 |---|---|
-| `ctx:query(sql, ...)` | runs a query with parameters; buffered up to `max_rows_buffered`: an array of rows (each row an array of strings, `nil` for NULL; `row.colname` works too), plus `res.columns` (list of names) and `res.capped` |
-| `ctx:exec(sql, ...)` | runs a statement; returns the affected rows. In `write` commands each statement is shown and confirmed first – unless `ctx:confirm` was already answered yes in this invocation |
+| `ctx:query(sql, ...)` | runs a query (parameters after `sql`) and buffers the result up to `max_rows_buffered` (default 10,000). Returns an array of rows; each row is an array of **strings** (numbers and dates as text, the way the grid shows them) or **`nil` for NULL**. In addition `row.colname` (with duplicate names the first column; unknown names give `nil`), `res.columns` (list of column names) and `res.capped` (`true` when cut off at `max_rows_buffered`) |
+| `ctx:exec(sql, ...)` | runs a statement; returns the number of affected rows. In `write` commands the confirmation comes first (see above) |
+| `ctx:reload_commands()` | reloads all commands once the running command has finished (like `reload`); returns the user command directory. UI only |
 
-Parameters are written as `?` in every dialect: when arguments are passed, dbcc rewrites each `?` outside strings, comments and quoted identifiers into the dialect's placeholder (`$1…` on PostgreSQL, `@p1…` on SQL Server). Without arguments the statement is sent unchanged (`?` is also a jsonb operator on PostgreSQL). Native placeholders work as well; mixing both in one statement does not. Parameter values: `nil`, booleans, numbers, strings. The profile's read-only guard and `confirm_writes` apply to `ctx:query` and `ctx:exec`.
+Result of `ctx:query("SELECT id, level, msg FROM logs ORDER BY id")` (real values):
+
+```lua
+#res          --> 3
+res.columns   --> { "id", "level", "msg" }
+res.capped    --> false
+res[1][1]     --> "4"          (a string, not the number 4)
+res[1].level  --> "info"
+res[3].msg    --> nil          (NULL)
+```
+
+`ctx:query` and `ctx:exec` run in the session like typed SQL: in the profile's transaction mode, with the profile's read-only guard and `confirm_writes`. They are not recorded in the statement history.
 
 **Output:**
 
-| Method | Does |
+| Method | Effect |
 |---|---|
-| `ctx:grid(sql, opts, ...)` | opens a lazily loaded result (parameters after `opts`). `opts.origin` (an object from `ctx:resolve`) makes it table-origin and runs it on the object's connection; `opts.title` names the tab; `opts.follow = {sql=, key=, interval=}` makes it a following result (below) |
-| `ctx:rows(headers, rows, opts)` | shows rows computed in Lua in a result tab; `nil` = NULL; numeric columns right-aligned; `opts.title` |
-| `ctx:text(str, lexer, opts)` | shows text in a tab; `lexer = "sql"` = the dialect's SQL lexer, otherwise a chroma lexer name, `nil` = plain; `opts.title` |
-| `ctx:message(msg)` | writes to the message log |
-| `ctx:export(file, opts)` | writes the active result to `.csv`/`.json` (like `export`); `opts.force` overwrites, `opts.progress` = row interval of progress messages (0 = none); returns the number of rows |
+| `ctx:grid(sql, opts, ...)` | opens a lazily loaded result in a result tab (parameters come **after** `opts`; without options `ctx:grid(sql, nil, p1)`). `opts.origin` (an object from `ctx:resolve`) makes it **table-origin** and runs it on the object's connection: sorting and filtering on the server, free `WHERE`, row form (`F4`), new row (`F7`). `opts.title` names the tab. `opts.follow = {sql=, key=, interval=}` makes it a following result (below). Returns at once; further rows load while paging |
+| `ctx:rows(headers, rows, opts)` | shows rows computed in Lua as a result tab: `headers` is a list of names, `rows` a list of row lists; values are converted with `tostring`, `nil` = NULL. Columns whose values are all Lua numbers are numeric (right-aligned). More values than headers give columns `col2`, `col3` …. `opts.title` (default: the command name). Not table-origin |
+| `ctx:text(str, lexer, opts)` | text in a tab: `lexer = "sql"` = the dialect's SQL lexer, otherwise a Chroma lexer name (`"lua"`, `"json"` …), `nil` = plain text; `opts.title` (default: the command name) |
+| `ctx:message(msg)` | an entry in the message log; `msg` is converted with `tostring` |
+| `print(...)` | like `ctx:message`, arguments separated by tabs; also usable while a script loads |
+| `ctx:export(file, opts)` | writes the active result (the current result tab) to `.csv` or `.json` (format from the extension) like `export`: the open cursor is read to the end, a local filter applies, a local sort loads all rows first. `~/` is expanded. `opts.force = true` overwrites an existing file, `opts.progress` = row interval of progress messages (default 10,000, 0 = none). Returns the number of rows written. On failure no half-written file is left |
 
-`opts.follow`: `follow.sql` is a query with exactly one `?` for the last seen value of the result column `follow.key`, returning the newer rows ordered by it ascending. It runs every `interval` seconds (default 2, at least 0.5) in the background on the auxiliary connection; its rows are appended. `ctx:grid` returns at once.
+`opts.follow` of `ctx:grid`: `follow.sql` is a query with exactly one `?` for the last seen value of the result column `follow.key`, returning the newer rows ordered by it ascending. It runs every `interval` seconds (default 2, at least 0.5) in the background on the auxiliary connection; its rows are appended, and the result keeps at most `page_size` rows. Following ends when the tab is closed or the result is cancelled. Template: `tail.lua`.
+
+Note on table-origin: server-side sorting and filtering rebuild the query from the object (`SELECT * FROM <obj> WHERE … ORDER BY …`). The `ORDER BY` and `LIMIT` of the command's query no longer apply after that – `head` and `tail` behave the same way.
 
 **Interaction:**
 
-| Method | Does |
+| Method | Effect |
 |---|---|
-| `ctx:confirm(msg)` | asks yes or no; returns a boolean |
-| `ctx:pick(items, opts)` | a filterable pick list; `items` are strings or tables with a `label`; returns `item, index`, or `nil` when cancelled; `opts.title` |
-| `ctx:editor_set(text)` | replaces the text of the current scratch tab (or of the first scratch, or a new one) |
-| `ctx:editor_open(title, text, opts)` | opens or focuses an editor tab; `opts.object` (from `ctx:resolve`) binds it as an object tab; without an object a new scratch with the text is created |
+| `ctx:confirm(msg)` | yes/no dialog; returns `true` or `false`. In a `write` command a "yes" covers all following `ctx:exec` calls of this invocation |
+| `ctx:pick(items, opts)` | filterable list (typing filters, `Enter` chooses, `Esc` cancels). `items` are strings or tables with a `label` field (other fields are allowed and come back unchanged). Returns `item, index` (the chosen element itself and its position from 1), or a single `nil` when cancelled; `opts.title` |
+| `ctx:editor_set(text)` | replaces the text of the current scratch tab; if the current tab is not a scratch, that of the first scratch, otherwise of a new one |
+| `ctx:editor_open(title, text, opts)` | with `opts.object` (from `ctx:resolve`): opens or focuses an object tab bound to the object, titled `title` (as `edit` does); without an object: a new scratch with the text (`title` is not used then) |
 | `ctx:about()` | shows the About page |
-| `ctx:history(n)` | the last `n` history entries (default 100), oldest first: `{time=, profile=, path=, duration_ms=, ok=, outcome=, stmt=}` |
+| `ctx:history(n)` | the last `n` entries of the statement history (default 100), oldest first: `{time="2026-11-22 00:38:48", profile=, path=, duration_ms=, ok=, outcome=, stmt=}` |
 
-**Headless:** `ctx:grid`, `ctx:rows`, `ctx:text`, `ctx:about` and `ctx:editor_open` print to stdout; `ctx:confirm` fails unless `--yes` is given; `ctx:pick` and `ctx:editor_set` fail with "not available without UI" (catchable with `pcall`, as `history.lua` does).
+### Parameters and placeholders
 
-**Metadata table returned by `ctx:meta`:**
+Write parameters as `?` in every dialect and pass the values after the SQL text (for `ctx:grid` after `opts`):
+
+```lua
+ctx:query("SELECT value FROM settings WHERE name = ?", args[1])
+ctx:exec("DELETE FROM logs WHERE created < ? AND level = ?", before, "info")
+ctx:grid("SELECT * FROM logs WHERE level = ?", { title = "warnings" }, "warn")
+```
+
+- When arguments are passed, dbcc replaces every `?` outside strings, comments and quoted identifiers with the dialect's placeholder: `?` stays on MySQL/MariaDB, `$1, $2 …` on PostgreSQL, `@p1, @p2 …` on SQL Server.
+- **Without arguments the statement is left unchanged** – on PostgreSQL `?` is also a jsonb operator (so `'{"a":1}'::jsonb ? 'a'` works without parameters).
+- Native placeholders work as well (`$1` on PostgreSQL, `@p1` on SQL Server); mixing `?` and native placeholders in one statement does not.
+- Allowed values: `nil` (NULL), booleans, numbers (whole numbers are passed as integers), strings. Tables are an error.
+- PostgreSQL infers a parameter's type from its context. Where it cannot (`SELECT ? AS a`), the type is `text`, and a Lua number fails with "unable to encode 5 into text format": write `?::int` or pass a string. `WHERE id = ?` with a number works.
+- Identifiers (table and column names) cannot be parameters: use `obj.sql` from `ctx:resolve` or `ctx:quote` for them.
+
+### Behaviour without UI
+
+Every primitive works headless too (`dbcc -p … -c "<command>"`):
+
+| Primitive | UI | headless |
+|---|---|---|
+| `ctx:grid` | result tab, page by page | all rows on stdout in the `--format` format (no `max_rows`); with `follow` on until SIGINT/SIGTERM |
+| `ctx:rows` | result tab | stdout in the `--format` format |
+| `ctx:text` | text tab with highlighting | the text unchanged on stdout (no colour, no title) |
+| `ctx:message`, `print` | message log | stderr |
+| `ctx:confirm`, confirmation of `ctx:exec` | yes/no dialog | without `--yes`: error `confirmation required; run with --yes:` + the question; with `--yes`: `true` |
+| `ctx:pick` | list | error `ctx:pick: choosing from a list is not available without UI` |
+| `ctx:editor_set` | scratch tab | error `ctx:editor_set: the editor is not available without UI` |
+| `ctx:editor_open` | editor tab | the text on stdout |
+| `ctx:about` | About page | the About text on stdout |
+| `ctx:export` | current result tab | the result printed last – which is already streamed to stdout then; headless, use `--format csv`/`json` instead |
+| `ctx:reload_commands` | reloads | error (headless loads afresh on every invocation) |
+
+The errors of `ctx:pick` and `ctx:editor_set` can be caught with `pcall` to offer an alternative without UI – as `history.lua` does, and as [example g](#g-interaction-list-and-editor) does.
+
+### Metadata table of `ctx:meta`
 
 ```text
 { name=, kind=, sql=, conn=, parts={…}, comment=, view_definition=, options={key=value},
@@ -1256,12 +1531,130 @@ Parameters are written as `?` in every dialect: when arguments are passed, dbcc 
   triggers = { {name=, timing=, event=}, … } }
 ```
 
-### A complete example
+The first fields are those of `ctx:resolve`. Real values for `logs` on MariaDB: `m.primary_key.name` = `PRIMARY`, `m.primary_key.columns` = `{ "id" }`, `#m.columns` = 4, `m.columns[1].data_type` = `int(11)`, `m.columns[1].auto_increment` = `true`, `m.columns[3].nullable` = `true`. `cat.lua` shows how to print every field.
 
-A command `counts` that counts the rows of every table of a database (or schema), optionally only tables with at least a minimum number of rows:
+### `dbcc.commands()` and `dbcc.fmt`
+
+| Function | Returns |
+|---|---|
+| `dbcc.commands()` | list of all registered commands, sorted by name: `{name=, usage=, help=, args={"object", "int?"}, flags={name=type}, write=, source=, default=}`; `default` is `true` for built-in commands (`help.lua` builds the help from it) |
+| `dbcc.fmt.table(headers, rows)` | an aligned text table as a string; `nil` = `NULL`; purely numeric columns right-aligned |
+| `dbcc.fmt.size(bytes)` | `"512 B"`, `"1.5 KiB"`, `"16.0 MiB"` … (`nil` → `""`) |
+| `dbcc.fmt.count(n)` | `"1,234,567"` |
+
+### Errors and exit codes
+
+- **Your own errors:** `error("text", 0)`. The `0` drops the position; `error("text")` gives `<command>: /path/to/file.lua:14: text`. Pass strings only – a table shows as `table: 0x…`.
+- **Errors of primitives** (SQL errors, objects not found …) become Lua errors with the error's text. Uncaught, they end the command.
+- Every error of a command is prefixed with the command name: `setting: no setting named nope`, `probe: Error 1064 (42000): You have an error in your SQL syntax …`. In the UI it appears in the message log and the status line, headless as `ERROR: …` on stderr.
+- **Headless exit codes:** `2` for invocation errors (wrong number of arguments, unknown flag, not an integer), `1` for every error while running (`error(…)`, SQL errors, a declined confirmation), `0` on success.
+- `pcall(f, …)` catches errors, those of primitives included: `local ok, err = pcall(ctx.query, ctx, sql)`.
+
+### Sandbox
+
+- Lua 5.1 (gopher-lua). There is **no** integer division `//`, no bitwise operators and no `goto` – use `math.floor(a / b)`.
+- Only the `base`, `table`, `string` and `math` libraries are loaded. **No `os`, no `io`, no `debug`, no `package`, no `coroutine`**; `dofile`, `loadfile`, `require`, `module` and `newproxy` are removed. `load`/`loadstring` remain (code from strings only). So there is no file access (except through `ctx:export`), no clock and no environment variables – ask the database for date and time (`SELECT NOW()`).
+- Every script has **its own global environment**: one script's globals are not visible in others; reads fall back to the shared standard functions. There is no shared code (no `require`); helper functions belong in the file that uses them.
+- The tables `dbcc` and `dbcc.fmt` are read-only (`dbcc is read-only`).
+- Top-level state of a script lives as long as the Lua runtime: in the UI until `reload` or quitting, headless only for the one command.
+- Loading is limited to 5 seconds, the `run` function is not. `F8` cancels only a running SQL statement of the command, **not pure Lua code**: an endless loop in `run` blocks all further commands until dbcc is quit (`F10`). Headless, `Ctrl+C` does not stop such a loop either; only `kill` (SIGTERM) does. So write loops with an exit condition.
+
+### Examples
+
+All examples are complete: save the file in `~/.config/dbcc/commands/`, run `reload` in the UI – done. They were tested with dbcc against MariaDB 11.8 (examples b and c also against PostgreSQL 17 and SQL Server 2022, e against all four dialects); the output shown is real. The test database `dbcc_doc` holds `logs (id, level, msg, created)`, `logs_archive` with the same structure, `settings (name, value)` and the view `recent_errors`; the profile `doc` points to it.
+
+#### a) Reading a value: `setting`
 
 ```lua
--- ~/.config/dbcc/commands/counts.lua
+-- setting.lua: read one value from an application settings table
+dbcc.command{
+  name  = "setting",
+  usage = "setting <name>",
+  help  = "Show the value of a row in the settings table of the current database",
+  args  = { "string" },
+  run = function(ctx, args)
+    local res = ctx:query("SELECT value FROM settings WHERE name = ?", args[1])
+    if #res == 0 then
+      error("no setting named " .. args[1], 0)
+    end
+    local v = res[1].value            -- or res[1][1]; NULL arrives as nil
+    ctx:message(args[1] .. " = " .. (v == nil and "NULL" or v))
+  end,
+}
+```
+
+The name goes into the query as a parameter – no SQL is assembled from user input. `#res` is the number of rows; NULL arrives as `nil`.
+
+```text
+$ dbcc -p doc -c "setting retention_days"
+retention_days = 90
+$ dbcc -p doc -c "setting owner"
+owner = NULL
+$ dbcc -p doc -c "setting nope"; echo $?
+ERROR: setting: no setting named nope
+1
+```
+
+#### b) A table-origin grid: `latest`
+
+The newest rows of a table, by primary key descending – the counterpart of `head`.
+
+```lua
+-- latest.lua: the newest rows of a table, by primary key
+dbcc.command{
+  name  = "latest",
+  usage = "latest <table> [n]",
+  help  = "Show the n newest rows (default 10), ordered by the primary key descending",
+  args  = { "object", "int?" },
+  run = function(ctx, args)
+    local n = tonumber(args[2]) or 10
+    if n < 1 then error("n must be at least 1", 0) end
+    local obj = ctx:resolve(args[1], "table")   -- tables only
+    local on  = ctx:on(obj)                     -- the table's connection
+    local m   = on:meta(obj)
+    if not m.primary_key then
+      error(obj.name .. " has no primary key", 0)
+    end
+    local order = {}
+    for _, col in ipairs(m.primary_key.columns) do
+      order[#order + 1] = on:quote(col) .. " DESC"
+    end
+    local sql = "SELECT * FROM " .. obj.sql .. " ORDER BY " .. table.concat(order, ", ")
+    on:grid(on:limit(sql, n), { origin = obj, title = "latest " .. obj.name })
+  end,
+}
+```
+
+- `args = { "object", "int?" }`: completion offers tables, dbcc checks that `n` is an integer.
+- `ctx:resolve(args[1], "table")` accepts `orders`, `shop.orders` or `/doc/shop/orders`; `obj.sql` is the quoted, qualified name.
+- `ctx:on(obj)`: the object may live on another connection – the SQL helpers and `grid` must run there.
+- `ctx:meta` provides the primary key (composite ones too), `on:quote` quotes the column names, `on:limit` adds the limit for the dialect.
+- `origin = obj` makes the result table-origin: in the UI `F4` (row form), `w` (free `WHERE`), and sorting and filtering on the server work – just as with `head`. A filter rebuilds the query from the table; the order and limit of `latest` no longer apply after that.
+
+```text
+$ dbcc -p doc -c "latest shop.orders 3"
+id  | customer_id | total  | status | created
+----+-------------+--------+--------+--------------------
+512 |          77 |  42.50 | new    | 2026-11-21 19:52:48
+400 |         400 | 600.00 | paid   | 2026-11-21 19:45:26
+399 |         399 | 598.50 | new    | 2026-11-21 19:45:26
+$ dbcc -p doc -c "latest /pgdoc/postgres/dbcc_doc/logs 2"
+id | level | created
+---+-------+--------------------
+ 3 | error | 2026-03-01 00:00:00
+ 2 | warn  | 2026-02-01 00:00:00
+$ dbcc -p doc -c "latest recent_errors"
+ERROR: latest: no such object: recent_errors in /doc/dbcc_doc
+```
+
+The second call reads – from the MariaDB profile – a PostgreSQL table by its path (`LIMIT` appended, `"…"` quoting); against SQL Server (`/msdoc/dbcc_doc/dbo/logs`) it becomes `SELECT TOP (2) …`. The third shows the restriction to tables: `recent_errors` is a view. In the UI a tab "latest orders" appears; in the test, `w` with `status = 'paid'` filtered on the server (status line `134 rows | filter: (status = 'paid')`) and `F4` opened the row form.
+
+#### c) Computed rows: `counts`
+
+The row count of every table of a database or schema, optionally only from a minimum count.
+
+```lua
+-- counts.lua: row counts of all tables of a database or schema
 dbcc.command{
   name  = "counts",
   usage = "counts [-m min] [path]",
@@ -1271,7 +1664,7 @@ dbcc.command{
   run = function(ctx, args, flags)
     local p = ctx:abspath(args[1] or ".")
     if not p.database then
-      error("counts needs a database: cd into one or give its path", 0)
+      error("counts needs a database: cd into one or give a path", 0)
     end
     local on = ctx:on(p)                     -- the connection of the path
     if on.has_schemas and not p.schema then
@@ -1294,9 +1687,291 @@ dbcc.command{
 }
 ```
 
-Use it as `counts`, `counts -m 1000`, `counts /pg/app/public`, or headless `dbcc -p prod -c "counts -m 1" --format csv`. Argument completion offers paths for `[path]` because the argument is declared as `path`.
+- `ctx:abspath` turns `.`, `..`, relative and absolute paths into a path table; `p.database`/`p.schema` tell whether the level is right.
+- `ctx:objects(p, "table")` returns tables only; `on:resolve(path)` turns each into an object with a quoted `sql`.
+- `tonumber` turns the counts into Lua numbers – that makes the column numeric in `ctx:rows` (right-aligned, sorted numerically).
+- The flag `-m` is declared `int`; `-m 3`, `-m=3`, `--m=3` are the same.
 
-To change a default command, export it with `--export-commands`, copy the file to `~/.config/dbcc/commands/` and edit it – for example the layout of `cat.lua`.
+```text
+$ dbcc -p doc -c "counts"
+table        | rows
+-------------+-----
+logs         |    6
+settings     |    2
+logs_archive |    0
+counts: 3 tables, 8 rows
+$ dbcc -p doc -c "counts --m=400 /doc/shop"
+table     | rows
+----------+-------
+big       | 400000
+customers |   3000
+orders    |    401
+counts: 3 tables, 403,401 rows
+$ dbcc -p doc --format csv -c "counts /doc/shop" 2>/dev/null
+table,rows
+big,400000
+customers,3000
+orders,401
+events,33
+$ dbcc -p doc -c "counts /pgdoc/postgres"
+ERROR: counts: counts needs a schema on postgres: /pgdoc/postgres/<schema>
+```
+
+The line `counts: …` is a message (stderr); `2>/dev/null` leaves only the data.
+
+#### d) A write command with parameters and confirmation
+
+Move old rows of `logs` into `logs_archive`; `-n` only counts.
+
+```lua
+-- archive-logs.lua: move old rows of logs into logs_archive
+dbcc.command{
+  name  = "archive-logs",
+  usage = "archive-logs [-n] <before-date>",
+  help  = "Move rows of logs created before a date (YYYY-MM-DD) into logs_archive; -n only counts",
+  args  = { "string" },
+  flags = { n = "bool" },
+  write = true,
+  run = function(ctx, args, flags)
+    local before = args[1]
+    if not before:match("^%d%d%d%d%-%d%d%-%d%d$") then
+      error("the date must look like 2026-06-01, got " .. before, 0)
+    end
+    local n = tonumber(ctx:query("SELECT COUNT(*) AS n FROM logs WHERE created < ?", before)[1].n)
+    if flags.n or n == 0 then
+      ctx:message("archive-logs: " .. n .. " rows before " .. before .. (flags.n and " (dry run)" or ""))
+      return
+    end
+    local copy = "INSERT INTO logs_archive SELECT * FROM logs WHERE created < ?"
+    local del  = "DELETE FROM logs WHERE created < ?"
+    -- One question for both statements. Without it, every ctx:exec of a
+    -- write command asks on its own (and "No" to the DELETE would leave
+    -- the copied rows in both tables).
+    if not ctx:confirm(string.format("Move %d rows created before %s from logs to logs_archive?\n\n%s;\n%s;",
+                                     n, before, copy, del)) then
+      ctx:message("archive-logs: nothing changed")
+      return
+    end
+    local copied  = ctx:exec(copy, before)   -- covered by the "yes" above
+    local deleted = ctx:exec(del, before)
+    ctx:message(string.format("archive-logs: copied %d, deleted %d rows", copied, deleted))
+  end,
+}
+```
+
+- `write = true`: blocked in read-only profiles, every `ctx:exec` is confirmed – unless a `ctx:confirm` was answered with yes. The one question shows the count, the date and both statements.
+- The date is checked and passed as a parameter, never inserted into the SQL text.
+- `ctx:exec` returns the affected rows.
+
+```text
+$ dbcc -p doc -c "archive-logs -n 2026-06-01"
+archive-logs: 3 rows before 2026-06-01 (dry run)
+$ dbcc -p doc -c "archive-logs 2026-06-01"; echo $?
+ERROR: archive-logs: confirmation required; run with --yes:
+Move 3 rows created before 2026-06-01 from logs to logs_archive?
+
+INSERT INTO logs_archive SELECT * FROM logs WHERE created < ?;
+DELETE FROM logs WHERE created < ?;
+1
+$ dbcc -p doc --yes -c "archive-logs 2026-06-01"
+archive-logs: copied 3, deleted 3 rows
+$ dbcc -p docro -c "archive-logs 2026-06-01"
+ERROR: archive-logs: writes and is blocked in the read-only profile docro
+```
+
+In the UI a dialog with this text and "Yes"/"No" appears. **Without** the `ctx:confirm`, dbcc asks before each of the two statements separately ("archive-logs will run on doc:" plus the statement, placeholder `?` instead of the value). In the test the `INSERT` was confirmed and the `DELETE` declined: the command ended with "archive-logs: cancelled by user", and the copied rows were then in both tables – hence the single question.
+
+#### e) Dialect-specific: `server`
+
+Server version and uptime. `ctx.dialect` selects the query.
+
+```lua
+-- server.lua: version and uptime of the server, per dialect
+local queries = {
+  mysql = [[SELECT VERSION() AS version,
+                   (SELECT VARIABLE_VALUE FROM performance_schema.global_status
+                     WHERE VARIABLE_NAME = 'Uptime') AS uptime_s]],
+  postgres = [[SELECT version() AS version,
+                      CAST(EXTRACT(EPOCH FROM now() - pg_postmaster_start_time()) AS bigint) AS uptime_s]],
+  mssql = [[SELECT @@VERSION AS version,
+                   DATEDIFF(second, sqlserver_start_time, SYSDATETIME()) AS uptime_s
+              FROM sys.dm_os_sys_info]],
+}
+queries.mariadb = [[SELECT VERSION() AS version,
+                           (SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS
+                             WHERE VARIABLE_NAME = 'UPTIME') AS uptime_s]]
+
+local function duration(s)
+  local d = math.floor(s / 86400)
+  local h = math.floor(s % 86400 / 3600)
+  local m = math.floor(s % 3600 / 60)
+  return string.format("%dd %02dh %02dm", d, h, m)
+end
+
+dbcc.command{
+  name  = "server",
+  help  = "Show the server version and uptime",
+  run = function(ctx)
+    local q = ctx.dialect and queries[ctx.dialect]
+    if not q then error("not connected: cd /<profile> first", 0) end
+    local r = ctx:query(q)[1]
+    local version = r.version:match("^[^\n]*")      -- first line (SQL Server: 4 lines)
+    ctx:rows({ "profile", "dialect", "version", "uptime" },
+             { { ctx.profile.name, ctx.dialect, version, duration(tonumber(r.uptime_s)) } })
+  end,
+}
+```
+
+- Top-level code (the `queries` table, the `duration` function) runs once while loading; `local` keeps it private.
+- MariaDB reports itself as `mariadb` although the profile says `driver = "mysql"` – hence its own entry. MySQL 8 no longer has `information_schema.GLOBAL_STATUS`; MariaDB still uses it.
+- No integer division in Lua 5.1: `math.floor(a / b)`.
+- On SQL Server, `sys.dm_os_sys_info` needs the `VIEW SERVER STATE` permission.
+
+Tested against all four dialects:
+
+```text
+$ dbcc -p doc -c server
+profile | dialect | version                | uptime
+--------+---------+------------------------+-----------
+doc     | mariadb | 11.8.9-MariaDB-ubu2404 | 0d 03h 04m
+$ dbcc -p mydoc -c server
+mydoc   | mysql   | 8.4.10  | 0d 03h 04m
+$ dbcc -p pgdoc -c server
+pgdoc   | postgres | PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc … | 0d 03h 04m
+$ dbcc -p msdoc -c server
+msdoc   | mssql   | Microsoft SQL Server 2022 (RTM-CU24-GDR) (KB5083252) - 16.0.4250.1 (X64)  | 0d 03h 04m
+```
+
+(For the last three only the data row is shown.)
+
+#### f) Replacing a built-in command: `head` with 20 rows
+
+```sh
+dbcc --export-commands /tmp/dbcc-defaults
+cp /tmp/dbcc-defaults/head.lua ~/.config/dbcc/commands/head.lua
+```
+
+Then change two places in the copy (help and default):
+
+```lua
+-- head.lua (user override): like the built-in head, but 20 rows by default
+local data_kinds = { table = true, view = true, ["materialized view"] = true }
+
+dbcc.command{
+  name  = "head",
+  usage = "head <table|view> [n]",
+  help  = "Show the first n rows (default 20)",
+  args  = { "object", "int?" },
+  run = function(ctx, args)
+    local n = tonumber(args[2]) or 20
+    if n < 0 then error("n must not be negative", 0) end
+    local obj = ctx:resolve(args[1])
+    if not data_kinds[obj.kind] then
+      error(obj.name .. " is a " .. obj.kind .. ", not a table or view", 0)
+    end
+    -- The object may live on another connection (object tree, absolute path).
+    local on = ctx:on(obj)
+    on:grid(on:limit("SELECT * FROM " .. obj.sql, n), { origin = obj })
+  end,
+}
+```
+
+After `reload` (or a restart) the new `head` applies wherever `head` is invoked – on the command line and headless:
+
+```text
+$ dbcc -p doc -c "help head" | tail -1
+source: /home/anna/.config/dbcc/commands/head.lua
+$ dbcc -p doc -c "head /doc/shop/orders" | wc -l
+22                                   # header + separator + 20 rows
+$ dbcc --no-user-commands -p doc -c "head /doc/shop/orders" | wc -l
+12                                   # the built-in head: 10 rows
+```
+
+If the replacement is broken, the built-in `head` stays active (see [Loading, replacing, fallback](#loading-replacing-fallback)). Deleting the file and running `reload` restores the original.
+
+#### g) Interaction: list and editor
+
+`tpl` writes a `SELECT` with all columns of a table into the scratch tab; without an argument you choose the table from a list.
+
+```lua
+-- tpl.lua: choose a table and put a SELECT template into the scratch tab
+dbcc.command{
+  name  = "tpl",
+  usage = "tpl [table]",
+  help  = "Write a SELECT with all columns of a table into the current scratch tab; without argument choose the table from a list",
+  args  = { "object?" },
+  run = function(ctx, args)
+    local name = args[1]
+    if not name then
+      local items = {}
+      for _, o in ipairs(ctx:objects(".", { "table", "view" })) do
+        items[#items + 1] = { label = o.name .. "  (" .. o.kind .. ")", name = o.name }
+      end
+      if #items == 0 then error("no tables or views here", 0) end
+      local item = ctx:pick(items, { title = "tpl: choose a table" })
+      if not item then return end              -- Esc: cancelled
+      name = item.name
+    end
+    local obj = ctx:resolve(name, { "table", "view" })
+    local m = ctx:on(obj):meta(obj)
+    local cols = {}
+    for _, c in ipairs(m.columns) do
+      cols[#cols + 1] = "  " .. ctx:on(obj):quote(c.name)
+    end
+    local sql = "SELECT\n" .. table.concat(cols, ",\n") .. "\nFROM " .. obj.sql .. "\nWHERE 1 = 1;\n"
+    -- Without UI ctx:editor_set raises "not available without UI":
+    -- print the template instead.
+    if pcall(ctx.editor_set, ctx, sql) then
+      ctx:message("tpl: template for " .. obj.name .. " in the editor")
+    else
+      ctx:text(sql, "sql", { title = "tpl " .. obj.name })
+    end
+  end,
+}
+```
+
+- The items of `ctx:pick` are tables with `label` (shown) and an extra field `name`; the chosen table itself comes back. `Esc` returns `nil`.
+- `pcall(ctx.editor_set, ctx, sql)` – the method with `ctx` as first argument – catches the headless error.
+
+In the UI (`F9`, `tpl`) the list "tpl: choose a table" appears with `logs  (table)`, `logs_archive  (table)`, `recent_errors  (view)`, `settings  (table)`; typing `sett` filters, `Enter` writes into the scratch:
+
+```sql
+SELECT
+  `name`,
+  `value`
+FROM `dbcc_doc`.`settings`
+WHERE 1 = 1;
+```
+
+and the log says `tpl: template for settings in the editor`. Headless:
+
+```text
+$ dbcc -p doc -c "tpl logs"
+SELECT
+  `id`,
+  `level`,
+  `msg`,
+  `created`
+FROM `dbcc_doc`.`logs`
+WHERE 1 = 1;
+$ dbcc -p doc -c "tpl"; echo $?
+ERROR: tpl: ctx:pick: choosing from a list is not available without UI
+1
+```
+
+Without the `pcall`, `ctx:editor_set` fails headless with `tpl: ctx:editor_set: the editor is not available without UI`.
+
+### Tips: testing, debugging, quoting, safety
+
+- **Testing without UI:** `dbcc -p <profile> -c "<command> <arguments>"` loads the scripts afresh on every call – save the file, repeat the command. Results go to stdout (`--format csv`/`json` for tests with `diff` or `jq`), messages to stderr, and the exit code tells success (`0`), run-time errors (`1`) and invocation errors (`2`). Write commands need `--yes`; `-v` shows every statement. Use a separate profile or a test database for tests.
+- **Finding load errors:** headless they appear as `warning: user command script skipped: …` with file, line and column before any output; in the UI in the message log after the start or after `reload`.
+- **Debugging:** `print(...)` and `ctx:message(...)` write to the message log or stderr. To print a table: `print(dbcc.fmt.table(res.columns, res))` shows a whole `ctx:query` result. `error("…")` without `0` names file and line.
+- **Read the built-in scripts:** use `--export-commands` and take the scripts as templates – `tail.lua` (following, key choice), `cp.lua` (one confirmation with all statements), `cat.lua` (printing metadata), `history.lua` (`pcall` around `ctx:pick`).
+- **Quote identifiers:** never assemble object names yourself; use `obj.sql` from `ctx:resolve` (qualified and quoted), and quote column names with `ctx:quote` or `ctx:on(obj):quote` – the dialect of the connection the SQL runs on.
+- **Avoid SQL injection:** always pass values as parameters (`?`), never concatenate them into the SQL text with `..`. Identifiers cannot be parameters: they come from `ctx:resolve`/`ctx:meta` (so they exist) and are quoted. Where an argument may take only certain values, check it first (`string.match`, a list of allowed values).
+- **Connections:** `ctx:on(obj)` for everything that concerns an object; `ctx.dialect` belongs to the current connection, `ctx:on(obj).dialect` to the object's.
+- **Numbers:** `ctx:query` returns strings – `tonumber` before calculating or comparing; pass Lua numbers to `ctx:rows` for numeric columns.
+- **Large results:** to display them use `ctx:grid` (loads page by page), not `ctx:query` + `ctx:rows` (buffered and cut off at `max_rows_buffered`, `res.capped`).
 
 ---
 
@@ -1349,7 +2024,7 @@ To change a default command, export it with `--export-commands`, copy the file t
 |---|---|
 | `~/.config/dbcc/config.toml` | settings, profiles, key bindings (0600 recommended; warning when wider) |
 | `~/.config/dbcc/credentials.toml` | credential store (0600) |
-| `~/.config/dbcc/commands/*.lua` | your own commands |
+| `~/.config/dbcc/commands/*.lua` | your own commands (loaded at start and by `reload`, see [Where the scripts are](#where-the-scripts-are)) |
 | `~/.local/state/dbcc/history.jsonl` | statement history (JSON Lines: `time`, `profile`, `path`, `duration_ms`, `outcome`, `stmt`) |
 | `~/.local/state/dbcc/scratches/<connection>/*.sql` | scratch files (`_none` = no connection) |
 | `~/.local/state/dbcc/scratches/open.json` | the scratch tabs that were open, with cursor positions |
