@@ -202,3 +202,43 @@ func TestQuickNavigationAltF1F2F3(t *testing.T) {
 	scr.InjectKey(tcell.KeyF2, 0, tcell.ModAlt)
 	waitFor(t, a, scr, "6RunAll", 2*time.Second) // editor
 }
+
+// TestModalIsOpaque: nothing of the pane underneath may show through a
+// modal window (Flex does not clear its background; the help overlay's
+// padding column showed grid values).
+func TestModalIsOpaque(t *testing.T) {
+	a, scr, stop := startApp(t, emptyConfig(), Options{NoSplash: true})
+	defer stop()
+	waitFor(t, a, scr, "6RunAll", 2*time.Second)
+	// Fill the editor with a marker that would show through the help box.
+	a.tv.QueueUpdateDraw(func() {
+		a.editors.Current().Editor.SetText(strings.Repeat(strings.Repeat("#", 200)+"\n", 40))
+	})
+	scr.InjectKey(tcell.KeyF1, 0, tcell.ModNone)
+	lines := waitFor(t, a, scr, "Search:", 2*time.Second)
+	// The help box's padding columns sit just inside its vertical borders;
+	// the right one lies over the editor's '#' text.
+	top, right := -1, -1
+	for n, l := range lines {
+		if i := strings.Index(l, "Search:"); i >= 0 {
+			top = n
+			r := []rune(l)
+			for j := len([]rune(l[:i])); j < len(r); j++ { // first border right of the search field
+				if r[j] == '║' || r[j] == '│' {
+					right = j
+					break
+				}
+			}
+			break
+		}
+	}
+	if top < 0 || right < 1 {
+		t.Fatal("help frame not found")
+	}
+	for n := top; n < len(lines) && n < top+20; n++ {
+		r := []rune(lines[n])
+		if right < len(r) && r[right-1] == '#' {
+			t.Fatalf("line %d: background shows through the modal's padding: %q", n, string(r[right-10:right+1]))
+		}
+	}
+}

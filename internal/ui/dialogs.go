@@ -162,10 +162,26 @@ func (h *host) About() error {
 
 // modal shows p centred on top of the main page.
 func (a *App) modal(name string, p tview.Primitive, width, height int) {
-	grid := tview.NewGrid().SetColumns(0, width, 0).SetRows(0, height, 0).AddItem(p, 1, 1, 1, 1, 0, 0, true)
+	grid := tview.NewGrid().SetColumns(0, width, 0).SetRows(0, height, 0).AddItem(opaque{p}, 1, 1, 1, 1, 0, 0, true)
 	a.pages.AddPage(name, grid, true, true)
 	a.modalStack = append(a.modalStack, name)
 	a.tv.SetFocus(p)
+}
+
+// opaque clears its area before drawing p. tview's Flex does not clear
+// its background (padding and gaps would show the pane underneath a
+// modal window), so every modal is wrapped in it.
+type opaque struct{ tview.Primitive }
+
+func (o opaque) Draw(screen tcell.Screen) {
+	x, y, w, h := o.GetRect()
+	st := tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor)
+	for row := y; row < y+h; row++ {
+		for col := x; col < x+w; col++ {
+			screen.SetContent(col, row, ' ', nil, st)
+		}
+	}
+	o.Primitive.Draw(screen)
 }
 
 // closeModal removes a modal and restores the focus.
