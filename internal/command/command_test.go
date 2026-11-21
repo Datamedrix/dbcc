@@ -81,7 +81,7 @@ func TestDefaultsLoad(t *testing.T) {
 		}
 	}
 	// Every command of spec section 8, one file each.
-	if got := strings.Join(names, " "); got != "cat cd cp du edit export grep head help history kill ll ls mv ps pwd tail wc" {
+	if got := strings.Join(names, " "); got != "cat cd cp du edit export grep head help history kill ll ls mv ps pwd reload tail wc" {
 		t.Fatalf("defaults: %s", got)
 	}
 	files, _ := DefaultScripts()

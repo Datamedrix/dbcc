@@ -181,18 +181,41 @@ func (a *App) closeSplash() {
 
 // startup loads commands, restores scratch tabs and connects (worker).
 func (a *App) startup() {
-	rt := script.New(script.Env{Workspace: a.ws, Host: &host{a}, Runner: a.runner, History: a.hist})
-	reg := command.New(rt)
-	if err := reg.Load(command.Options{NoUserCommands: a.opts.NoUserCommands, UserDir: a.opts.UserCmdDir}); err != nil {
-		a.message(exec.Message{Err: fmt.Errorf("loading commands: %w", err)})
-	}
-	// Published on the UI goroutine, which reads it (help, completion).
-	a.ui(func() { a.reg = reg })
+	a.loadCommands(false)
 	for _, w := range a.cfg.Warnings {
 		a.message(exec.Message{Info: "warning: " + w})
 	}
 	if a.opts.Profile != "" {
 		a.runCommand("cd", "/"+a.opts.Profile)
+	}
+}
+
+// loadCommands builds a fresh Lua runtime and registry with the embedded
+// defaults and the user scripts and publishes it (worker goroutine). On a
+// reload the previous runtime is closed afterwards; a reload is scheduled
+// as its own job, so no command is running in the old Lua state.
+func (a *App) loadCommands(reload bool) {
+	rt := script.New(script.Env{Workspace: a.ws, Host: &host{a}, Runner: a.runner, History: a.hist,
+		Reload: func() (string, error) {
+			a.do(func() { a.loadCommands(true) })
+			return a.opts.UserCmdDir, nil
+		}})
+	reg := command.New(rt)
+	if err := reg.Load(command.Options{NoUserCommands: a.opts.NoUserCommands, UserDir: a.opts.UserCmdDir}); err != nil {
+		a.message(exec.Message{Err: fmt.Errorf("loading commands: %w", err)})
+		if reload {
+			rt.Close()
+			return // keep the commands that work
+		}
+	}
+	var old *command.Registry
+	// Published on the UI goroutine, which reads it (help, completion).
+	a.ui(func() { old, a.reg = a.reg, reg })
+	if reload {
+		if old != nil {
+			old.Runtime().Close()
+		}
+		a.message(exec.Message{Info: fmt.Sprintf("commands reloaded: %d commands (user scripts from %s)", len(reg.Commands()), a.opts.UserCmdDir)})
 	}
 }
 

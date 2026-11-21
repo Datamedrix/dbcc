@@ -192,6 +192,9 @@ func (l *MessageLog) Add(m exec.Message) {
 	switch {
 	case m.Err != nil:
 		fmt.Fprintf(&b, "[red::b]ERROR[-::-] [red]%s[-]", tview.Escape(oneLine(m.Err.Error())))
+	case m.Stmt == "":
+		// a note without a statement (Info only): no row counts — a zero
+		// Message has Returned/Affected 0, which is not "0 rows"
 	case m.Returned >= 0:
 		fmt.Fprintf(&b, "[green]%s rows[-]", exec.FormatCount(m.Returned))
 	case m.Affected >= 0:

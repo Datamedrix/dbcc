@@ -29,6 +29,11 @@ type Env struct {
 	Runner func(s *session.Session) *exec.Runner
 	// History is the statement history for ctx:history; nil means none.
 	History *history.History
+	// Reload, if set, schedules reloading all commands (embedded defaults
+	// and user scripts) after the running command has finished; it
+	// returns where user scripts are read from. Nil: not available
+	// (headless mode runs a single command).
+	Reload func() (userDir string, err error)
 }
 
 // LoadTimeout bounds the time a script may run while it loads, so a

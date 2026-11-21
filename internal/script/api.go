@@ -22,25 +22,26 @@ var ErrNotConnected = errors.New("not connected: cd /<profile> first")
 
 func (rt *Runtime) ctxMethods() *lua.LTable {
 	m := map[string]func(*lua.LState, *lua.LTable) int{
-		"chdir":       rt.apiChdir,
-		"abspath":     rt.apiAbspath,
-		"objects":     rt.apiObjects,
-		"resolve":     rt.apiResolve,
-		"profiles":    rt.apiProfiles,
-		"on":          rt.apiOn,
-		"quote":       rt.apiQuote,
-		"limit":       rt.apiLimit,
-		"query":       rt.apiQuery,
-		"exec":        rt.apiExec,
-		"grid":        rt.apiGrid,
-		"rows":        rt.apiRows,
-		"text":        rt.apiText,
-		"message":     rt.apiMessage,
-		"confirm":     rt.apiConfirm,
-		"pick":        rt.apiPick,
-		"editor_set":  rt.apiEditorSet,
-		"editor_open": rt.apiEditorOpen,
-		"about":       rt.apiAbout,
+		"chdir":           rt.apiChdir,
+		"abspath":         rt.apiAbspath,
+		"objects":         rt.apiObjects,
+		"resolve":         rt.apiResolve,
+		"profiles":        rt.apiProfiles,
+		"on":              rt.apiOn,
+		"quote":           rt.apiQuote,
+		"limit":           rt.apiLimit,
+		"query":           rt.apiQuery,
+		"exec":            rt.apiExec,
+		"grid":            rt.apiGrid,
+		"rows":            rt.apiRows,
+		"text":            rt.apiText,
+		"message":         rt.apiMessage,
+		"confirm":         rt.apiConfirm,
+		"pick":            rt.apiPick,
+		"editor_set":      rt.apiEditorSet,
+		"editor_open":     rt.apiEditorOpen,
+		"about":           rt.apiAbout,
+		"reload_commands": rt.apiReloadCommands,
 	}
 	m["meta"] = rt.apiMeta
 	m["source"] = rt.apiSource
@@ -989,6 +990,21 @@ func (rt *Runtime) apiEditorOpen(L *lua.LState, self *lua.LTable) int {
 		return rt.raise(fmt.Errorf("ctx:editor_open: %w", err))
 	}
 	return 0
+}
+
+// apiReloadCommands implements ctx:reload_commands(): reload all commands
+// after the current one has finished (install user scripts at run time).
+// Returns the user command directory.
+func (rt *Runtime) apiReloadCommands(L *lua.LState, self *lua.LTable) int {
+	if rt.env.Reload == nil {
+		return rt.raise(fmt.Errorf("ctx:reload_commands: only available in the UI (headless mode loads the commands at every start)"))
+	}
+	dir, err := rt.env.Reload()
+	if err != nil {
+		return rt.raise(fmt.Errorf("ctx:reload_commands: %w", err))
+	}
+	L.Push(lua.LString(dir))
+	return 1
 }
 
 func (rt *Runtime) apiAbout(L *lua.LState, self *lua.LTable) int {

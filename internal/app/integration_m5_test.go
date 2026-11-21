@@ -529,7 +529,7 @@ func TestEveryDefaultCommandIsTested(t *testing.T) {
 		"head": "TestM1DataCommands", "wc": "TestM1DataCommands", "cat": "TestM5Cat", "edit": "TestM5Edit",
 		"cp": "TestM5CpMv", "mv": "TestM5CpMv", "du": "TestM5DuGrepPs", "grep": "TestM5DuGrepPs",
 		"ps": "TestM5DuGrepPs", "kill": "TestM5Kill", "export": "TestM5Export", "history": "TestM5History",
-		"help": "TestM5Help", "tail": "TestTailAllServers",
+		"help": "TestM5Help", "tail": "TestTailAllServers", "reload": "TestReloadHeadlessAllServers",
 	}
 	names, err := command.DefaultScripts()
 	if err != nil {
