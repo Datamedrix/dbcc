@@ -104,7 +104,7 @@ func DefaultKeymap() *Keymap {
 	add(r, "prev_result", "[", "", "Previous result tab")
 	add(r, "next_result", "]", "", "Next result tab")
 	add(r, "close_result", "alt+x", "", "Close the result tab (Messages stays)")
-	add(r, "close_all_results", "alt+X", "", "Close all result tabs")
+	add(r, "close_all_results", "alt+q", "", "Close all result tabs")
 
 	f := PaneForm
 	add(f, "save", "f2", "Save", "Save")
@@ -263,6 +263,13 @@ func ParseKey(s string) (Key, error) {
 	r := []rune(s)
 	if low == "space" {
 		r = []rune{' '}
+	}
+	// A terminal sends Alt+key as ESC key; ESC followed by '@'…'_'
+	// (upper-case letters, [ \ ] ^ _) is a C1 control sequence (ESC X =
+	// SOS, ESC P = DCS, ESC [ = CSI …). Such a key never arrives, and
+	// tcell then swallows all further input until the string terminator.
+	if mod&tcell.ModAlt != 0 && len(r) == 1 && r[0] >= '@' && r[0] <= '_' {
+		return Key{}, fmt.Errorf("%q cannot be used: terminals send Alt+%c as the control sequence ESC %c (use a lower-case letter or another key)", orig, r[0], r[0])
 	}
 	if len(r) == 1 {
 		return Key{Code: tcell.KeyRune, Rune: r[0], Mod: mod}, nil

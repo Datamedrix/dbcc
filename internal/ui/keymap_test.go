@@ -28,7 +28,9 @@ func TestParseKey(t *testing.T) {
 			t.Errorf("ParseKey(%q) = %+v, %v; want %+v", in, got, err, want)
 		}
 	}
-	for _, bad := range []string{"", "f99", "hyper+x", "abc"} {
+	// Alt+upper-case / Alt+C1 introducers arrive as control sequences (ESC X = SOS)
+	// and make tcell swallow the following input; they must be rejected.
+	for _, bad := range []string{"", "f99", "hyper+x", "abc", "alt+X", "alt+P", "alt+[", "alt+_", "ctrl+alt+Q"} {
 		if _, err := ParseKey(bad); err == nil {
 			t.Errorf("ParseKey(%q): want error", bad)
 		}

@@ -38,8 +38,8 @@ func TestCloseResultTabs(t *testing.T) {
 	if a := k.Action(PaneGrid, tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModAlt)); a != "close_result" {
 		t.Errorf("alt+x = %q", a)
 	}
-	if a := k.Action(PaneGrid, tcell.NewEventKey(tcell.KeyRune, 'X', tcell.ModAlt|tcell.ModShift)); a != "close_all_results" {
-		t.Errorf("alt+X = %q", a)
+	if a := k.Action(PaneGrid, tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModAlt)); a != "close_all_results" {
+		t.Errorf("alt+q = %q", a)
 	}
 }
 
