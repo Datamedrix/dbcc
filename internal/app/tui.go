@@ -13,5 +13,6 @@ func RunTUI(ctx context.Context, env *Env) error {
 		Profile:        env.Opts.Profile,
 		NoSplash:       env.Opts.NoSplash,
 		NoUserCommands: env.Opts.NoUserCommands,
+		ConfigPath:     env.Opts.ConfigPath, // F2 saves connections to the file given with --config
 	})
 }

@@ -56,6 +56,7 @@ func DefaultKeymap() *Keymap {
 	add(g, "cancel", "f8", "Cancel", "Cancel the running statement; on a following result (tail -f): stop following")
 	add(g, "cmdline", "f9", "Cmd", "Focus the command line")
 	add(g, "quit", "f10", "Quit", "Quit")
+	add(g, "maximize", "f11", "", "Editor or results in full height; again restores the split")
 	add(g, "focus_tree", "alt+f1", "", "Go to the object tree")
 	add(g, "focus_editor", "alt+f2", "", "Go to the editor (scratchpad)")
 	add(g, "focus_results", "alt+f3", "", "Go to the results")

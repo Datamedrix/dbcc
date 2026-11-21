@@ -21,15 +21,17 @@
 //	Selection      Shift + any of the movement keys above that has an arrow,
 //	               Home/End, PgUp/PgDn or Ctrl+Home/End form; Alt+A selects all.
 //	               Typing, Enter, Backspace, Delete or paste replace the selection.
-//	Kill / yank    Ctrl+K kill to end of line (joins lines at EOL)
+//	Kill           Ctrl+K kill to end of line (joins lines at EOL)
 //	               Ctrl+U kill to line start
 //	               Ctrl+W kill word backward (whitespace-delimited); with a selection: cut
 //	               Alt+D kill word forward, Alt+Backspace kill word backward
-//	               Alt+W copy the selection into the kill ring
-//	               Ctrl+Y yank (Readline), Alt+Y cycle the yanked text (yank-pop)
 //	               Consecutive kills accumulate into one kill-ring entry.
-//	Undo / redo    Ctrl+Z or Ctrl+_ undo, Alt+Z redo. Ctrl+Y is yank, as in
-//	               Readline; Ctrl+Shift+Z cannot be distinguished in terminals.
+//	Clipboard      Ctrl+Shift+C copy, Ctrl+Shift+X cut, Ctrl+Shift+V paste; the
+//	               application routes these keys (internal/ui clipboardKeys) and
+//	               calls Copy, Cut and PasteLast (owner request; Alt+W, Ctrl+Y
+//	               and Alt+Y were removed).
+//	Undo / redo    Ctrl+Z or Ctrl+_ undo, Alt+Z redo; Ctrl+Shift+Z cannot be
+//	               distinguished in terminals.
 //	Editing        Enter newline keeping indentation, Backspace/Ctrl+H, Delete/Ctrl+D,
 //	               Alt+I insert indentation (TabWidth spaces); Tab does the same only
 //	               when TabInserts is true.

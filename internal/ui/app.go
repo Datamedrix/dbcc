@@ -90,6 +90,7 @@ type App struct {
 	popup            *complete.Popup
 	gridPromptClosed func()
 	autosave         *time.Timer // pending scratch autosave
+	maximized        string      // PaneEditor or PaneGrid while F11 is active
 }
 
 // Run starts the UI and blocks until it quits.
@@ -258,8 +259,8 @@ func (a *App) build() {
 	a.footer = NewFooter(t)
 
 	a.right = tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(a.editors, 0, 2, false).
-		AddItem(a.results, 0, 3, false)
+		AddItem(a.editors, 0, editorWeight, false).
+		AddItem(a.results, 0, resultsWeight, false)
 	body := tview.NewFlex().AddItem(a.treeBox, 32, 0, false).AddItem(a.right, 0, 1, false)
 	main := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(body, 0, 1, false).
@@ -494,11 +495,15 @@ func (a *App) handle(pane, action string) bool {
 		a.tv.SetFocus(a.cmd)
 	case "quit":
 		a.requestQuit()
+	case "maximize":
+		a.toggleMaximize(pane)
 	case "focus_tree":
 		a.tv.SetFocus(a.tree)
 	case "focus_editor":
+		a.restoreIfHidden(PaneEditor)
 		a.tv.SetFocus(a.editors)
 	case "focus_results":
+		a.restoreIfHidden(PaneGrid)
 		a.tv.SetFocus(a.results.Current().primitive())
 	case "next_pane", "prev_pane":
 		a.cycleFocus(action == "next_pane")
@@ -539,6 +544,12 @@ func (a *App) cycleFocus(forward bool) {
 		idx = (idx + 1) % len(order)
 	} else {
 		idx = (idx + len(order) - 1) % len(order)
+	}
+	switch order[idx] {
+	case a.editors:
+		a.restoreIfHidden(PaneEditor)
+	case a.results.Current().primitive():
+		a.restoreIfHidden(PaneGrid)
 	}
 	a.tv.SetFocus(order[idx])
 }
@@ -1017,4 +1028,44 @@ func (a *App) txnDecision(s *session.Session, target string) error {
 		return err
 	}
 	return nil
+}
+
+// Layout weights of the right column (editor : results).
+const editorWeight, resultsWeight = 2, 3
+
+// toggleMaximize gives the focused right pane (editor or results) the full
+// height of the right column; again restores the split (owner request, F11).
+func (a *App) toggleMaximize(pane string) {
+	if a.maximized != "" {
+		a.restoreSplit()
+		return
+	}
+	// The hidden pane is removed from the layout: a zero-sized Flex item
+	// would still draw its fixed-height children (the result tab bar
+	// appeared in the status line).
+	switch pane {
+	case PaneEditor:
+		a.right.RemoveItem(a.results)
+	case PaneGrid:
+		a.right.RemoveItem(a.editors)
+	default:
+		a.lastErr = "F11 maximizes the editor or the results: focus one of them first"
+		return
+	}
+	a.maximized = pane
+}
+
+func (a *App) restoreSplit() {
+	a.right.Clear()
+	a.right.AddItem(a.editors, 0, editorWeight, a.editors.HasFocus()).
+		AddItem(a.results, 0, resultsWeight, false)
+	a.maximized = ""
+}
+
+// restoreIfHidden restores the split when the pane about to get the focus
+// is hidden by the maximized other pane.
+func (a *App) restoreIfHidden(pane string) {
+	if a.maximized != "" && a.maximized != pane {
+		a.restoreSplit()
+	}
 }

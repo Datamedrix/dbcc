@@ -366,3 +366,31 @@ func TestCtrlShiftXCutsSelection(t *testing.T) {
 		t.Fatalf("after Ctrl+X: %q", got)
 	}
 }
+
+func TestF11MaximizesAndRestores(t *testing.T) {
+	a, scr, stop := startApp(t, emptyConfig(), Options{NoSplash: true})
+	defer stop()
+	lines := waitFor(t, a, scr, "6RunAll", 2*time.Second) // editor focused
+	if !strings.Contains(strings.Join(lines, "\n"), "Messages") {
+		t.Fatal("results not visible at start")
+	}
+	scr.InjectKey(tcell.KeyF11, 0, tcell.ModNone)
+	time.Sleep(200 * time.Millisecond)
+	lines = waitFor(t, a, scr, "6RunAll", 2*time.Second)
+	if strings.Contains(strings.Join(lines, "\n"), "Messages") {
+		t.Fatalf("results still visible with the editor maximized:\n%s", strings.Join(lines, "\n"))
+	}
+	scr.InjectKey(tcell.KeyF11, 0, tcell.ModNone)
+	waitFor(t, a, scr, "Messages", 2*time.Second)
+	// Results maximized; moving the focus to the hidden editor restores the split.
+	scr.InjectKey(tcell.KeyF3, 0, tcell.ModAlt)
+	waitFor(t, a, scr, "3Pivot", 2*time.Second)
+	scr.InjectKey(tcell.KeyF11, 0, tcell.ModNone)
+	time.Sleep(200 * time.Millisecond)
+	lines = waitFor(t, a, scr, "Messages", 2*time.Second)
+	if strings.Contains(strings.Join(lines, "\n"), "[scratch ") {
+		t.Fatal("editor still visible with the results maximized")
+	}
+	scr.InjectKey(tcell.KeyF2, 0, tcell.ModAlt)
+	waitFor(t, a, scr, "[scratch ", 2*time.Second)
+}
