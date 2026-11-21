@@ -337,3 +337,32 @@ func TestShiftF6AndF18AreShiftF6(t *testing.T) {
 		t.Errorf("F6 = %q", a)
 	}
 }
+
+func TestCtrlShiftXCutsSelection(t *testing.T) {
+	a, scr, stop := startApp(t, emptyConfig(), Options{NoSplash: true})
+	defer stop()
+	waitFor(t, a, scr, "6RunAll", 2*time.Second)
+	text := func() string {
+		ch := make(chan string, 1)
+		a.tv.QueueUpdate(func() { ch <- a.editors.Current().Editor.Text() + "|" + a.editors.Current().Editor.LastKill() })
+		return <-ch
+	}
+	for _, r := range "SELECT 9" {
+		scr.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+	}
+	scr.InjectKey(tcell.KeyRune, 'a', tcell.ModAlt)                 // select all
+	scr.InjectKey(tcell.KeyRune, 'X', tcell.ModCtrl|tcell.ModShift) // CSI-u Ctrl+Shift+X
+	time.Sleep(200 * time.Millisecond)
+	if got := text(); got != "|SELECT 9" {
+		t.Fatalf("after Ctrl+Shift+X: %q", got)
+	}
+	for _, r := range "abc" {
+		scr.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+	}
+	scr.InjectKey(tcell.KeyLeft, 0, tcell.ModShift)
+	scr.InjectKey(tcell.KeyCtrlX, 0, tcell.ModCtrl) // legacy form
+	time.Sleep(200 * time.Millisecond)
+	if got := text(); got != "ab|c" {
+		t.Fatalf("after Ctrl+X: %q", got)
+	}
+}

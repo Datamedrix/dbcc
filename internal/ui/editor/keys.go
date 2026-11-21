@@ -26,6 +26,7 @@ func (e *Editor) Bindings() []Binding {
 		{"Shift+movement", "Extend the selection"},
 		{"Alt+A", "Select all"},
 		{"Ctrl+Shift+C", "Copy the selection to the clipboard (also Ctrl+C)"},
+		{"Ctrl+Shift+X", "Cut the selection to the clipboard (also Ctrl+X)"},
 		{"Ctrl+Shift+V", "Paste (the terminal's paste; otherwise the last copied text)"},
 		{"Ctrl+W", "Kill word backward, or cut the selection"},
 		{"Ctrl+K", "Kill to end of line"},
@@ -484,6 +485,18 @@ func (e *Editor) Copy() bool {
 		return false
 	}
 	e.pushKill(text, false, true)
+	e.selecting = false
+	return true
+}
+
+// Cut removes the selection into the copy buffer and calls OnCopy (the
+// application copies it to the system clipboard). Owner request: Ctrl+Shift+X.
+func (e *Editor) Cut() bool {
+	a, b, ok := e.selRange()
+	if !ok {
+		return false
+	}
+	e.killRange(e.offsetOf(a), e.offsetOf(b), true)
 	e.selecting = false
 	return true
 }

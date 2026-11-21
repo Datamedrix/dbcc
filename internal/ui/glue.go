@@ -254,15 +254,15 @@ func isCtrlLetter(ev *tcell.EventKey, letter rune) bool {
 		unicode.ToLower(ev.Rune()) == letter
 }
 
-// clipboardKeys handles Ctrl+Shift+C / Ctrl+Shift+V (owner request) and
+// clipboardKeys handles Ctrl+Shift+C / X / V (owner request) and
 // keeps Ctrl+C from stopping the application (tview's default): in the
 // editor it copies the selection, elsewhere it is ignored. Many terminals
 // handle Ctrl+Shift+C/V themselves (copying the terminal selection,
 // pasting via bracketed paste); when the keys reach dbcc they act on the
 // editor. Returns the event to pass on and whether it was handled.
 func (a *App) clipboardKeys(ev *tcell.EventKey) (*tcell.EventKey, bool) {
-	copyKey, pasteKey := isCtrlLetter(ev, 'c'), isCtrlLetter(ev, 'v')
-	if !copyKey && !pasteKey {
+	copyKey, pasteKey, cutKey := isCtrlLetter(ev, 'c'), isCtrlLetter(ev, 'v'), isCtrlLetter(ev, 'x')
+	if !copyKey && !pasteKey && !cutKey {
 		return ev, false
 	}
 	if name, _ := a.pages.GetFrontPage(); name != "main" {
@@ -283,6 +283,12 @@ func (a *App) clipboardKeys(ev *tcell.EventKey) (*tcell.EventKey, bool) {
 	if copyKey {
 		if !tab.Editor.Copy() {
 			a.lastErr = "nothing selected to copy"
+		}
+		return nil, true
+	}
+	if cutKey {
+		if !tab.Editor.Cut() {
+			a.lastErr = "nothing selected to cut"
 		}
 		return nil, true
 	}
