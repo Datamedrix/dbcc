@@ -793,6 +793,7 @@ func TestEveryDefaultCommandIsTestedDX(t *testing.T) {
 		"cat": "TestDXCatEdit", "edit": "TestDXCatEdit", "cp": "TestDXCpMv", "mv": "TestDXCpMv",
 		"du": "TestDXDuGrepPs", "grep": "TestDXDuGrepPs", "ps": "TestDXDuGrepPs", "kill": "TestDXKill",
 		"export": "TestDXExportHistoryHelp", "history": "TestDXExportHistoryHelp", "help": "TestDXExportHistoryHelp",
+		"tail": "TestTailAllServers",
 	}
 	names, err := command.DefaultScripts()
 	if err != nil {

@@ -211,3 +211,60 @@ func For(driver string) (Dialect, error) {
 	}
 	return d, nil
 }
+
+// AppendLimit limits query to n rows by appending " LIMIT n" when that
+// keeps its ORDER BY in effect: query is a SELECT (or WITH … SELECT) with
+// a top-level ORDER BY and without a top-level LIMIT, OFFSET, FETCH, FOR,
+// INTO, PROCEDURE or LOCK. ok is false otherwise and the caller wraps the
+// query instead. Wrapping alone is not enough for ordered queries: MySQL
+// and MariaDB may ignore an ORDER BY inside a derived table, so
+// "SELECT * FROM (… ORDER BY id DESC) AS x LIMIT 10" would not return the
+// last rows (tail, spec 8).
+func AppendLimit(t sqltext.Tokenizer, query string, n int) (limited string, ok bool) {
+	q := strings.TrimSpace(query)
+	for strings.HasSuffix(q, ";") {
+		q = strings.TrimSpace(strings.TrimSuffix(q, ";"))
+	}
+	depth, first, order := 0, "", false
+	for _, tok := range t.Tokenize(q) {
+		switch tok.Kind {
+		case sqltext.TokWhitespace, sqltext.TokComment:
+			continue
+		case sqltext.TokPunct:
+			switch tok.Text {
+			case "(":
+				depth++
+			case ")":
+				depth--
+			}
+			continue
+		case sqltext.TokIdent:
+		default:
+			if first == "" {
+				return "", false
+			}
+			continue
+		}
+		w := strings.ToUpper(tok.Text)
+		if first == "" {
+			first = w
+			if w != "SELECT" && w != "WITH" {
+				return "", false
+			}
+			continue
+		}
+		if depth != 0 {
+			continue
+		}
+		switch w {
+		case "ORDER":
+			order = true
+		case "LIMIT", "OFFSET", "FETCH", "FOR", "INTO", "PROCEDURE", "LOCK":
+			return "", false
+		}
+	}
+	if !order || depth != 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%s LIMIT %d", q, n), true
+}

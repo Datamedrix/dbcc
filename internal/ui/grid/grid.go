@@ -359,6 +359,7 @@ func (g *Grid) ColumnWidth(col int) int {
 func (g *Grid) Draw(screen tcell.Screen) {
 	_, _, w, h := g.Table.GetInnerRect()
 	g.height, g.width = h, w
+	g.syncFollow()
 	g.refreshView()
 	g.content.updateWidths()
 	g.maybeFetch()
@@ -456,6 +457,47 @@ func (g *Grid) pivotKey(ev *tcell.EventKey) bool {
 	}
 	g.Table.Select(max(row-step, 1), max(col, 1))
 	return true
+}
+
+// syncFollow keeps the cursor of a following source in place when rows
+// were appended or dropped from the front since the last draw: on the
+// last row it moves to the new last row (like tail -f), otherwise it stays
+// on its record.
+func (g *Grid) syncFollow() {
+	c := g.content
+	f, ok := c.src.(Follower)
+	if !ok || !f.Follows() {
+		return
+	}
+	n, off := c.src.Len(), 0
+	if p, ok := c.src.(Pager); ok {
+		off = p.Offset()
+	}
+	if n == c.seenLen && off == c.seenOff {
+		return
+	}
+	dropped := off - c.seenOff
+	disp, col := g.cursor()
+	wasLast := c.seenLen == 0 || disp == c.seenLen-1
+	c.seenLen, c.seenOff = n, off
+	if c.view != nil {
+		// Local sort or filter: indices shifted, rebuild the view.
+		if dropped > 0 {
+			c.view = &localView{rowView: newRowView(c.cols, g.state)}
+			c.view.refresh(n, c.rowFunc())
+		}
+		return
+	}
+	switch {
+	case wasLast:
+		g.selectDisplay(n-1, col)
+	case dropped > 0:
+		g.selectDisplay(max(disp-dropped, 0), col)
+		if !c.pivot {
+			rowOff, colOff := g.Table.GetOffset()
+			g.Table.SetOffset(max(rowOff-dropped, 0), colOff)
+		}
+	}
 }
 
 // refreshView brings a local view up to date with the loaded rows, keeping
@@ -558,12 +600,18 @@ type content struct {
 	pivotWidth int
 	attrW      int   // width of the pivot attribute column
 	pk         []int // primary-key columns for pivot record labels
+	// Rows and offset of a following source at the last draw (syncFollow).
+	seenLen, seenOff int
 }
 
 func newContent(src Source, maxWidth, pivotWidth int) *content {
 	c := &content{src: src, maxWidth: maxWidth, pivotWidth: pivotWidth, sampled: -1, fetch: &fetchState{}}
 	if src != nil {
 		c.cols = src.Columns()
+		c.seenLen = src.Len()
+		if p, ok := src.(Pager); ok {
+			c.seenOff = p.Offset()
+		}
 	}
 	c.setState(State{}, nil)
 	return c

@@ -39,7 +39,16 @@ type Pager interface {
 	PrevPage() error
 }
 
-// ResultSource adapts *exec.Result to Source and Pager.
+// Follower is implemented by sources that grow while they are shown
+// (tail -f, spec A26): rows are appended at the end on another goroutine
+// and the oldest are dropped from the front (Pager.Offset grows by their
+// number). Such a source has no pages.
+type Follower interface {
+	Follows() bool // the source follows (or followed: still no pages)
+	StopFollow()   // stop following and wait for it
+}
+
+// ResultSource adapts *exec.Result to Source, Pager and Follower.
 type ResultSource struct{ R *exec.Result }
 
 // Columns returns the result's columns.
@@ -84,3 +93,9 @@ func (s ResultSource) NextPage() error { return s.R.NextPage(context.Background(
 
 // PrevPage loads the previous page.
 func (s ResultSource) PrevPage() error { return s.R.PrevPage(context.Background()) }
+
+// Follows reports whether the result is a following result.
+func (s ResultSource) Follows() bool { return s.R.Follows() }
+
+// StopFollow stops a following result.
+func (s ResultSource) StopFollow() { s.R.StopFollow() }

@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
+	"syscall"
 
 	"dbcc/internal/config"
 	"dbcc/internal/exec"
@@ -32,6 +34,16 @@ type headlessSink struct {
 	results int
 	err     error
 	last    *exec.Result
+	follows []*headlessFollow // following results (tail -f), see follow
+}
+
+// headlessFollow prints the rows a following result appends.
+type headlessFollow struct {
+	res   *exec.Result
+	mu    sync.Mutex // the stream, written from the follower goroutine
+	st    export.Stream
+	ended chan struct{} // closed when following ended on its own
+	err   error         // why (guarded by mu)
 }
 
 // ActiveResult returns the last result. Headless results are streamed to
@@ -44,9 +56,92 @@ func (h *headlessSink) Result(r *exec.Result) {
 	}
 	h.results++
 	h.last = r
+	if r.Follows() {
+		if err := h.startFollow(r); err != nil && h.err == nil {
+			h.err = err
+		}
+		return
+	}
 	if err := WriteResult(h.env.Stdout, h.env.Opts.Format, r, 500); err != nil && h.err == nil {
 		h.err = err
 	}
+}
+
+// startFollow prints the rows of a following result and installs the
+// printer of the rows it appends: table format without repeating the
+// header, csv/tsv records, json as JSON Lines (export.Stream).
+func (h *headlessSink) startFollow(r *exec.Result) error {
+	names := make([]string, len(r.Columns))
+	numeric := make([]bool, len(r.Columns))
+	for i, c := range r.Columns {
+		names[i], numeric[i] = c.Name, c.Numeric
+	}
+	st, err := export.NewStream(h.env.Opts.Format, h.env.Stdout, numeric, exec.CellText)
+	if err != nil {
+		return err
+	}
+	f := &headlessFollow{res: r, st: st, ended: make(chan struct{})}
+	st.Header(names)
+	for _, row := range r.Rows() {
+		st.Row(row)
+	}
+	if err := st.Flush(); err != nil {
+		return err
+	}
+	r.OnFollow(func(rows []exec.Row) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		for _, row := range rows {
+			st.Row(row)
+		}
+		st.Flush()
+	}, func(err error) {
+		f.mu.Lock()
+		f.err = err
+		f.mu.Unlock()
+		close(f.ended)
+	})
+	h.follows = append(h.follows, f)
+	return nil
+}
+
+// follow keeps following results printing until SIGINT or SIGTERM, ctx
+// is done or every follower has ended on its own; then it stops them. It
+// returns the error that ended a follower (a dropped table), else nil.
+func (h *headlessSink) follow(ctx context.Context) error {
+	if len(h.follows) == 0 {
+		return nil
+	}
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
+	all, quit := make(chan struct{}), make(chan struct{})
+	defer close(quit)
+	go func() {
+		for _, f := range h.follows {
+			select {
+			case <-f.ended:
+			case <-quit:
+				return
+			}
+		}
+		close(all)
+	}()
+	select {
+	case <-sig:
+	case <-ctx.Done():
+	case <-all:
+	}
+	var err error
+	for _, f := range h.follows {
+		f.res.StopFollow()
+		f.mu.Lock()
+		if f.err != nil && err == nil {
+			err = fmt.Errorf("following stopped: %w", f.err)
+		}
+		f.mu.Unlock()
+	}
+	return err
 }
 
 func (h *headlessSink) Message(m exec.Message) {
@@ -160,6 +255,9 @@ func RunHeadless(ctx context.Context, env *Env) error {
 		}
 		defer reg.Runtime().Close()
 		err = reg.Dispatch(ctx, o.Command)
+		if err == nil {
+			err = h.sink.follow(ctx) // tail -f: until SIGINT or SIGTERM
+		}
 		if err != nil && reg.IsCommand(o.Command) {
 			var ue *script.UsageError
 			if !errors.As(err, &ue) {

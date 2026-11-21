@@ -63,7 +63,7 @@ A single-binary, keyboard-driven, full-screen terminal database client written i
 | `cat <table>` | Structured description in the style of MySQL `EXPLAIN <table>` / `DESCRIBE`, extended with **all** definitions and constraints. Not a DDL statement. |
 | `cat <view\|procedure\|function>` | Source code with syntax highlighting. |
 | `explain` | Not a special command. It stays plain SQL (query plan). |
-| Additional commands in v1 | `ls`, `pwd`, `history`, `head`, `wc`, `du`, `mv`, `grep`, `ps`, `kill`, `export`, `edit`, `help`. |
+| Additional commands in v1 | `ls`, `pwd`, `history`, `head`, `tail`, `wc`, `du`, `mv`, `grep`, `ps`, `kill`, `export`, `edit`, `help`. |
 | Implementation of commands | **Every** command is a Lua script, including `cd`, `ll`, `cp` and `cat`. No command is written in Go. The default scripts are embedded in the binary. |
 | Extensibility | User scripts in the config directory add commands or replace default ones. |
 
@@ -413,6 +413,8 @@ Note on the product name: T-SQL has its own `DBCC` statements (for example `DBCC
 | `pwd` | Print the current path | no | `ctx.path` |
 | `ll <table\|view>` | `SELECT * FROM obj` in the grid, table-origin result | no | `ctx:grid` |
 | `head <table\|view> [n]` | First n rows, default 10 | no | `ctx:limit`, `ctx:grid` |
+| `tail [-k column] <table\|view> [n]` | Last n rows (default 10) by the primary key (all its columns) or by `-k column`, shown in ascending order; table-origin result. A view, or a table without primary key, needs `-k`. | no | `ctx:meta`, `ctx:limit`, `ctx:grid` |
+| `tail -f [-i seconds] [-k column] <table\|view> [n]` | As `tail`, then follows: rows whose key is greater than the last one are appended at the end of the result as they are inserted, polled every `-i` seconds (default 2, at least 0.5) on the auxiliary connection; single-column key only; see A26 | no | `ctx:grid` with `opts.follow` |
 | `wc <table\|view>` | `SELECT COUNT(*)` | no | `ctx:query` |
 | `du [table]` | Data and index size, row estimate | no | `ctx:query`, `ctx:rows` |
 | `cat [-t kind] <object>` | Structure of a table; source of a view, procedure or function | no | `ctx:meta`, `ctx:source`, `dbcc.fmt.table`, `ctx:text` |
@@ -545,7 +547,7 @@ The splitter returns statements with their starting line number. The same splitt
 
 Every result carries its origin:
 
-- **table-origin**: produced by `ll`, `head`, or opening a table or view from the tree. The grid knows the object and its metadata.
+- **table-origin**: produced by `ll`, `head`, `tail`, or opening a table or view from the tree. The grid knows the object and its metadata.
 - **free**: anything else.
 
 Table-origin results enable server-side sort and filter, the free `WHERE` filter, and row editing.
@@ -664,14 +666,14 @@ dbcc.command{
 | `ctx:source(name, kind)` | Source text of a view, procedure, function or trigger |
 | **SQL helpers** | |
 | `ctx:quote(ident)` | Quote an identifier |
-| `ctx:limit(sql, n)` | Dialect-specific row limit |
+| `ctx:limit(sql, n)` | Dialect-specific row limit; with a top-level `ORDER BY` the order decides which rows remain (MySQL, MariaDB, PostgreSQL append `LIMIT n`; MSSQL injects `TOP (n)`), because MySQL and MariaDB ignore an `ORDER BY` inside a derived table |
 | `ctx:copy_sql(src, dst, opts)` | Statements that copy a table; `opts.structure` selects the `cp -a` variant |
 | `ctx:replace_script(name, kind)` | Runnable script that re-creates a view, routine, trigger or event from its current source |
 | **Execution** | |
 | `ctx:query(sql, ...)` | Run a query with parameters; returns rows as a table (buffered, capped) |
 | `ctx:exec(sql, ...)` | Run a statement; returns affected rows |
 | **Output** | |
-| `ctx:grid(sql, opts, ...)` | Open a lazily loaded result tab; `opts.origin` marks it table-origin |
+| `ctx:grid(sql, opts, ...)` | Open a lazily loaded result tab; `opts.origin` marks it table-origin; `opts.follow = {sql=, key=, interval=}` makes it a following result (A26): `follow.sql` has one `?` for the last seen value of result column `follow.key` and returns the newer rows ordered by it ascending; it runs every `interval` seconds in the background on the auxiliary connection and its rows are appended |
 | `ctx:rows(headers, rows, opts)` | Show rows computed in Lua in a result tab |
 | `ctx:text(str, lexer)` | Show highlighted text in a tab |
 | `dbcc.fmt.table(headers, rows)` | Aligned text table as a string |
@@ -707,7 +709,7 @@ Defaults; every binding can be changed in the configuration. Esc+digit and Alt+d
 | F9 | Focus the command line |
 | F10 | Quit |
 | Tab / Shift+Tab | Next / previous pane |
-| F8 | Cancel the running statement |
+| F8 | Cancel the running statement; on a following result tab (`tail -f`) stop following |
 
 **Object tree**
 
@@ -879,3 +881,4 @@ Testing:
 | A23 | The About page shows the web address https://www.datamedrix.com (A15). | confirmed |
 | A24 | A result tab holds at most `page_size` rows (default 3,000, configurable in `[settings]`); after that the owner pages: next page, next 3,000 rows, and so on (`n`/F6, `p`). Moving back, or forward after the cursor was closed, re-runs a read statement and skips rows. Supersedes `max_rows`, `capped` and "load all" of 10.2 for the UI grid; export writes the whole result. | confirmed (2026-11-21) |
 | A25 | Scratches work like DataGrip's scratch files: one file per scratch under `~/.local/state/dbcc/scratches/<connection>/`, named after its creation time (`scratch_YYYY-MM-DD_HH-MM-SS.sql`), saved automatically about 1 s after the last change; closing saves first and is refused when saving fails; Alt+O lists and re-opens scratches, Alt+E/Alt+R rename (names unique per connection, case-insensitive), Alt+D deletes. Supersedes the scratch-tab persistence of 9.1. | confirmed (2026-11-21) |
+| A26 | `tail` shows the last n rows by key (primary key, all columns, or `-k column`) in ascending order: `SELECT * FROM (<last n by key descending>) AS dbcc_tail ORDER BY <key>`. `tail -f` follows **inserts only, by key order**: every interval (default 2 s, `-i`, at least 0.5 s) it reads the rows with a key greater than the last one seen, ordered ascending, and appends them at the end of the result; updated or deleted rows, and rows committed later with a smaller key, are not shown. A single-column key is required (`-k` for a composite primary key). Polling runs in the background on the **auxiliary connection** of the object's session, never on the main session (open-cursor rule) and never on the command's goroutine, so the UI stays usable. The result keeps at most `page_size` rows (headless: 3,000); older rows are dropped from the front and the status line shows `rows 1,201–4,200 · following · 12 new rows · every 2 s`. Paging does not apply (`n`/`p`/F6 say so). Following stops when the tab is closed, on F8 with that result tab current, when a sort or filter re-queries it, when the session closes or the application quits; an error (e.g. the table was dropped) stops it and goes to the message log. With the cursor on the last row the grid moves it to the new last row. Headless (`dbcc -p prof -c "tail -f log"`) prints the last n rows, then each new row as it arrives — table format without repeating the header, csv/tsv records, json as **JSON Lines** (one object per line, no enclosing array) — until SIGINT or SIGTERM, then exits 0; an error that stops following exits 1. | confirmed (2026-11-21) |

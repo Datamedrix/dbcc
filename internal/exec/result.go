@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -72,6 +73,7 @@ type Result struct {
 	read     bool // the statement is a read query (Dialect.IsRead): re-runs allowed
 	released bool // Release was called: a page load in flight must not refill it
 	reopenFn func(ctx context.Context, work func(c *Cursor) error) error
+	follow   *follower // non-nil for a following result (tail -f, follow.go)
 }
 
 // Paging errors.
@@ -135,7 +137,7 @@ func (r *Result) Cursor() *Cursor { r.mu.Lock(); defer r.mu.Unlock(); return r.c
 func (r *Result) Page() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.PageSize <= 0 {
+	if r.PageSize <= 0 || r.follow != nil {
 		return 1
 	}
 	return r.offset/r.PageSize + 1
@@ -150,7 +152,7 @@ func (r *Result) Offset() int { r.mu.Lock(); defer r.mu.Unlock(); return r.offse
 func (r *Result) HasNextPage() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.hasNextLocked() }
 
 func (r *Result) hasNextLocked() bool {
-	if r.PageSize <= 0 || r.noNext {
+	if r.PageSize <= 0 || r.noNext || r.follow != nil {
 		return false
 	}
 	if r.ahead != nil {
@@ -168,7 +170,7 @@ func (r *Result) hasNextLocked() bool {
 func (r *Result) SkipRows(next bool) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.PageSize <= 0 {
+	if r.PageSize <= 0 || r.follow != nil {
 		return 0
 	}
 	if next {
@@ -298,6 +300,10 @@ func (r *Result) afterLoad(c *Cursor) error {
 // page then stays.
 func (r *Result) NextPage(ctx context.Context) error {
 	r.mu.Lock()
+	if r.follow != nil {
+		r.mu.Unlock()
+		return ErrFollowing
+	}
 	if r.PageSize <= 0 {
 		r.mu.Unlock()
 		return ErrNoPaging
@@ -351,9 +357,11 @@ func (r *Result) NextPage(ctx context.Context) error {
 // start and skipping the rows before that page (read statements only).
 func (r *Result) PrevPage(ctx context.Context) error {
 	r.mu.Lock()
-	ps, off, read, reopen := r.PageSize, r.offset, r.read, r.reopenFn
+	ps, off, read, reopen, follows := r.PageSize, r.offset, r.read, r.reopenFn, r.follow != nil
 	r.mu.Unlock()
 	switch {
+	case follows:
+		return ErrFollowing
 	case ps <= 0:
 		return ErrNoPaging
 	case off == 0:
@@ -400,7 +408,10 @@ func (r *Result) loadAt(ctx context.Context, off int) error {
 
 // Release drops the loaded rows and closes the cursor, so the memory of a
 // closed result tab is freed even if something still refers to the Result.
+// A following result stops polling first; Release waits for its
+// goroutine to exit.
 func (r *Result) Release() {
+	r.StopFollow()
 	r.mu.Lock()
 	c := r.cursor
 	r.released = true
@@ -450,7 +461,17 @@ func (r *Result) Status() string {
 	partial, capped := r.Partial, r.Capped
 	ps, off := r.PageSize, r.offset
 	next := r.hasNextLocked()
+	f := r.follow
+	var added int
+	var interval time.Duration
+	var active bool
+	if f != nil {
+		added, interval, active = f.added, f.spec.Interval, f.active
+	}
 	r.mu.Unlock()
+	if f != nil {
+		return followStatus(n, off, added, interval, active)
+	}
 	if ps > 0 && n > 0 && (off > 0 || next || partial) {
 		s := "rows " + FormatCount(off+1) + "–" + FormatCount(off+n) + " · page " + FormatCount(off/ps+1)
 		if next {
@@ -471,6 +492,24 @@ func (r *Result) Status() string {
 		s = FormatCount(n) + "+ rows"
 	}
 	return s
+}
+
+// followStatus is the status of a following result: "42 rows · following
+// · 3 new rows · every 2 s"; after rows were dropped from the front
+// "rows 1,201–4,200 · …"; "following stopped" once polling has ended.
+func followStatus(n, off, added int, interval time.Duration, active bool) string {
+	s := FormatCount(n) + " rows"
+	if off > 0 && n > 0 {
+		s = "rows " + FormatCount(off+1) + "–" + FormatCount(off+n)
+	}
+	news := FormatCount(added) + " new rows"
+	if added == 1 {
+		news = "1 new row"
+	}
+	if !active {
+		return s + " · following stopped · " + news
+	}
+	return s + " · following · " + news + " · every " + strconv.FormatFloat(interval.Seconds(), 'f', -1, 64) + " s"
 }
 
 // FormatCount formats n with thousands separators.
@@ -782,7 +821,8 @@ func (r *Result) Stream(ctx context.Context, n int, fn func([]Row) error) error 
 	r.mu.Lock()
 	rows, off, partial, capped := r.rows, r.offset, r.Partial, r.Capped
 	open := r.cursor != nil && !r.cursor.Done()
-	complete := off == 0 && r.ahead == nil && !open && !partial && !capped
+	// A following result exports the rows it holds (it is one page).
+	complete := (off == 0 || r.follow != nil) && r.ahead == nil && !open && !partial && !capped
 	read, reopen := r.read, r.reopenFn
 	r.mu.Unlock()
 	if complete || (off == 0 && open && !partial) {

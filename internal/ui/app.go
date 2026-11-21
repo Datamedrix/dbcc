@@ -476,6 +476,13 @@ func (a *App) handle(pane, action string) bool {
 	case "profiles":
 		a.showProfiles()
 	case "cancel":
+		// F8 on a following result (tail -f) stops following.
+		if res := a.results.CurrentResult(); res != nil && res.Following() {
+			go func() {
+				res.StopFollow()
+				a.message(exec.Message{Info: res.Title + ": following stopped (F8)"})
+			}()
+		}
 		if s := a.ws.Current(); s != nil && a.busy.Load() > 0 {
 			go func() {
 				if err := s.Cancel(context.Background()); err != nil {

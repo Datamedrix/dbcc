@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	lua "github.com/yuin/gopher-lua"
 
@@ -758,6 +759,16 @@ func (rt *Runtime) apiExec(L *lua.LState, self *lua.LTable) int {
 // ctx:grid(sql, opts, ...) opens a lazily loaded result. opts.origin (an
 // object from ctx:resolve) marks it table-origin and runs it on the
 // object's connection; opts.title names the tab.
+//
+// opts.follow = {sql=, key=, interval=} makes it a following result (tail
+// -f, spec A26): after the result's rows are loaded, follow.sql — a query
+// with one "?" for the last seen value of column follow.key (a column of
+// the result), returning the newer rows ordered by it ascending — is run
+// every follow.interval seconds (default 2, at least 0.5) on the
+// auxiliary connection of the session, and its rows are appended at the
+// end of the result, which keeps at most page_size rows. The call returns
+// at once; polling stops when the result is closed, cancelled or its
+// session closes.
 func (rt *Runtime) apiGrid(L *lua.LState, self *lua.LTable) int {
 	q := L.CheckString(2)
 	opts := ensureTable(L, 3, "opts")
@@ -765,6 +776,7 @@ func (rt *Runtime) apiGrid(L *lua.LState, self *lua.LTable) int {
 	var s *session.Session
 	var err error
 	title := ""
+	var follow *lua.LTable
 	if opts != nil {
 		title = luaFieldString(opts, "title")
 		if o, ok := opts.RawGetString("origin").(*lua.LTable); ok {
@@ -777,9 +789,20 @@ func (rt *Runtime) apiGrid(L *lua.LState, self *lua.LTable) int {
 				return rt.raise(err)
 			}
 		}
+		switch v := opts.RawGetString("follow").(type) {
+		case *lua.LNilType:
+		case *lua.LTable:
+			follow = v
+		default:
+			L.ArgError(3, "opts.follow must be a table {sql=, key=, interval=}")
+		}
 	}
 	if s == nil {
 		s = rt.mustSession(self)
+	}
+	var spec exec.FollowSpec
+	if follow != nil {
+		spec = rt.followSpec(L, s, origin, follow)
 	}
 	args := params(L, 4)
 	res, err := rt.runner(s).Grid(rt.gctx(), bind(s, q, args), origin, args...)
@@ -789,8 +812,49 @@ func (rt *Runtime) apiGrid(L *lua.LState, self *lua.LTable) int {
 	if title != "" {
 		res.Title = title
 	}
+	if follow != nil {
+		if err := res.SetFollow(spec); err != nil {
+			res.Release()
+			return rt.raise(err)
+		}
+	}
 	rt.env.Host.Result(res)
+	res.StartFollow()
 	return 0
+}
+
+// followSpec reads opts.follow of ctx:grid. Polls run on the auxiliary
+// connection for the database of the origin (or the session's current one).
+func (rt *Runtime) followSpec(L *lua.LState, s *session.Session, origin *exec.Origin, f *lua.LTable) exec.FollowSpec {
+	fq := luaFieldString(f, "sql")
+	key := luaFieldString(f, "key")
+	if fq == "" || key == "" {
+		L.ArgError(3, "opts.follow needs sql (with one ? for the last key) and key (a column of the result)")
+	}
+	interval := exec.DefaultFollowInterval
+	switch v := f.RawGetString("interval").(type) {
+	case *lua.LNilType:
+	case lua.LNumber:
+		interval = time.Duration(float64(v) * float64(time.Second))
+		if interval < exec.MinFollowInterval {
+			L.ArgError(3, fmt.Sprintf("opts.follow.interval must be at least %g seconds", exec.MinFollowInterval.Seconds()))
+		}
+	default:
+		L.ArgError(3, "opts.follow.interval must be a number of seconds")
+	}
+	db := s.Database()
+	if origin != nil && origin.Object.Database != "" {
+		db = origin.Object.Database
+	}
+	return exec.FollowSpec{
+		SQL:      dialect.Rebind(s.Dialect, fq),
+		Key:      key,
+		Interval: interval,
+		Conn: func(ctx context.Context) (exec.Querier, error) {
+			return s.AuxFor(ctx, db)
+		},
+		Gone: s.Done(),
+	}
 }
 
 // ---- output ----

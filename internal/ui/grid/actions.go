@@ -223,6 +223,10 @@ func (g *Grid) finishRequery(gen int, st State, origin *exec.Origin, res *exec.R
 	if res.Origin == nil {
 		res.Origin = origin
 	}
+	// The re-queried result replaces a following one, which stops.
+	if f, ok := g.content.src.(Follower); ok && f.Follows() {
+		go f.StopFollow()
+	}
 	g.state = st
 	g.replaceSource(ResultSource{res})
 	g.changed()
@@ -250,6 +254,10 @@ func (g *Grid) Page() (int, bool) {
 
 func (g *Grid) movePage(next bool) {
 	if g.content.src == nil {
+		return
+	}
+	if f, ok := g.content.src.(Follower); ok && f.Follows() {
+		g.setNote(exec.ErrFollowing.Error())
 		return
 	}
 	p, ok := g.content.src.(Pager)

@@ -371,7 +371,13 @@ func (p *Postgres) Qualify(obj meta.Path) string {
 	return p.QuoteIdent(obj.Schema) + "." + p.QuoteIdent(obj.Object)
 }
 
+// LimitQuery limits query to n rows. A query with a top-level ORDER BY
+// gets LIMIT appended, so the order decides which rows remain (an ORDER BY
+// inside a derived table may be ignored); anything else is wrapped.
 func (p *Postgres) LimitQuery(query string, n int) string {
+	if q, ok := dialect.AppendLimit(sqltext.NewPostgres(), query, n); ok {
+		return q
+	}
 	return fmt.Sprintf("SELECT * FROM (%s) AS dbcc_limit LIMIT %d", strings.TrimRight(strings.TrimSpace(query), ";"), n)
 }
 

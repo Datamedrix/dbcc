@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -38,11 +39,42 @@ func (h *host) Result(r *exec.Result) {
 			o.Table = t
 		}
 	}
+	if r.Follows() {
+		a.followNotify(r)
+	}
 	a.tv.QueueUpdateDraw(func() {
 		t := a.results.AddResult(r, a.gridOptionsFor(r))
 		if p := a.pane(); p == PaneCmd || p == PaneGrid { // the tree keeps its focus (owner request)
 			a.tv.SetFocus(t.primitive())
 		}
+	})
+}
+
+// followNotify installs the callbacks of a following result (tail -f).
+// They run on the follower goroutine and must not wait for the UI
+// goroutine, which may be waiting for the follower in Result.Release
+// (tview's QueueUpdate is synchronous): appended rows trigger one redraw
+// at a time from a goroutine of its own; the grid moves its cursor in
+// Draw.
+func (a *App) followNotify(r *exec.Result) {
+	var pending atomic.Bool
+	title := r.Title
+	r.OnFollow(func([]exec.Row) {
+		if pending.Swap(true) {
+			return
+		}
+		go a.tv.QueueUpdateDraw(func() { pending.Store(false) })
+	}, func(err error) {
+		select {
+		case <-a.quit:
+			return // shutting down: the sessions are being closed
+		default:
+		}
+		m := exec.Message{Info: title + ": following stopped (the connection was closed)"}
+		if err != nil {
+			m = exec.Message{Err: fmt.Errorf("%s: following stopped: %w", title, err)}
+		}
+		go a.message(m)
 	})
 }
 

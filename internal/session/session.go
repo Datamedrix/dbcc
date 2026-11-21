@@ -35,6 +35,19 @@ type Session struct {
 	txnOpen    bool
 	auxByDB    map[string]*sql.DB // aux pools for other databases (PostgreSQL)
 	stmtCancel context.CancelFunc
+	done       chan struct{} // closed by Close (see Done)
+}
+
+// Done returns a channel that is closed when the session is closed.
+// Background work on its connections (following results, spec A26) stops
+// on it.
+func (s *Session) Done() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.done == nil {
+		s.done = make(chan struct{})
+	}
+	return s.done
 }
 
 // Open connects a profile. database overrides the profile's database if set.
@@ -325,6 +338,16 @@ func (c conns) close() {
 
 // Close closes cursor and all connections.
 func (s *Session) Close() error {
+	s.mu.Lock()
+	if s.done == nil {
+		s.done = make(chan struct{})
+	}
+	select {
+	case <-s.done:
+	default:
+		close(s.done)
+	}
+	s.mu.Unlock()
 	s.CloseCursor()
 	s.snapshot().close()
 	return nil

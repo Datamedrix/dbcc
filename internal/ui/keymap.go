@@ -53,7 +53,7 @@ func DefaultKeymap() *Keymap {
 	g := PaneGlobal
 	add(g, "help", "f1", "Help", "Help overlay for the focused pane")
 	add(g, "profiles", "f2", "Conn", "Profiles: open, switch, close connections")
-	add(g, "cancel", "f8", "Cancel", "Cancel the running statement")
+	add(g, "cancel", "f8", "Cancel", "Cancel the running statement; on a following result (tail -f): stop following")
 	add(g, "cmdline", "f9", "Cmd", "Focus the command line")
 	add(g, "quit", "f10", "Quit", "Quit")
 	add(g, "focus_tree", "alt+f1", "", "Go to the object tree")

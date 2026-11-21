@@ -206,7 +206,13 @@ func (m *MySQL) Qualify(obj meta.Path) string {
 	return m.QuoteIdent(obj.Database) + "." + m.QuoteIdent(obj.Object)
 }
 
+// LimitQuery limits query to n rows. A query with a top-level ORDER BY
+// gets LIMIT appended, so the order decides which rows remain (an ORDER BY
+// inside a derived table may be ignored); anything else is wrapped.
 func (m *MySQL) LimitQuery(query string, n int) string {
+	if q, ok := dialect.AppendLimit(sqltext.NewMySQL(), query, n); ok {
+		return q
+	}
 	return fmt.Sprintf("SELECT * FROM (%s) AS dbcc_limit LIMIT %d", strings.TrimRight(strings.TrimSpace(query), ";"), n)
 }
 
