@@ -1,0 +1,7 @@
+CREATE OR REPLACE PROCEDURE app.p_count(INOUT n bigint DEFAULT NULL::bigint)
+ LANGUAGE plpgsql
+AS $procedure$
+BEGIN
+  SELECT count(*) INTO n FROM app.items;
+END
+$procedure$

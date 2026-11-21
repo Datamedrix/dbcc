@@ -1,0 +1,28 @@
+materialized view "app"."mv_totals" -- totals
+
+Columns
+# | Field | Type                  | Null | Key | Default | Extra | Comment
+--+-------+-----------------------+------+-----+---------+-------+--------
+1 | code  | character varying(20) | YES  | UNI | NULL    |       |
+2 | total | numeric               | YES  |     | NULL    |       |
+
+Indexes
+Name              | Columns | Unique | Type  | Visible | Comment
+------------------+---------+--------+-------+---------+--------
+ix_mv_totals_code | code    | YES    | btree | YES     |
+
+Options
+Option        | Value
+--------------+---------
+access_method | heap
+owner         | postgres
+populated     | no
+comment       | totals
+
+Definition
+CREATE MATERIALIZED VIEW "app"."mv_totals" AS
+SELECT code,
+    sum(total) AS total
+   FROM app.items
+  GROUP BY code
+WITH NO DATA

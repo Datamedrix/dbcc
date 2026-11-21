@@ -1,0 +1,6 @@
+CREATE FUNCTION dbo.add_tax (@amount decimal(10,2))
+RETURNS decimal(10,2)
+AS
+BEGIN
+    RETURN @amount * 1.19;
+END

@@ -187,6 +187,12 @@ func Register(driver string, d Dialect) {
 	registry[driver] = d
 }
 
+// ReplaceWarner is implemented by dialects whose replace scripts have side
+// effects the owner must know about before running them (spec 9.1, A21).
+type ReplaceWarner interface {
+	ReplaceWarning(kind meta.ObjectKind) string
+}
+
 // ErrCancelViaContext is returned by Dialect.Cancel when the dialect
 // cancels through the driver: the session then cancels the context of the
 // running statement (PostgreSQL, MSSQL; spec 6.3).

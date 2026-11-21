@@ -1,0 +1,10 @@
+-- Trigger with comments before CREATE
+CREATE TRIGGER sales.trg_items_ins ON sales.items
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE i SET note = COALESCE(i.note, N'auto')
+    FROM sales.items i JOIN inserted x ON x.id = i.id
+    WHERE i.note IS NULL AND i.status = 'trigger';
+END

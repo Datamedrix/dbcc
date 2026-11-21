@@ -1,0 +1,33 @@
+table "public"."plain"
+
+Columns
+# | Field | Type    | Null | Key | Default | Extra | Comment
+--+-------+---------+------+-----+---------+-------+--------
+1 | id    | integer | NO   | PRI |         |       |
+2 | val   | text    | YES  |     | NULL    |       |
+
+Primary and unique keys
+Key         | Name       | Columns
+------------+------------+--------
+PRIMARY KEY | plain_pkey | id
+
+Foreign keys
+(none)
+
+Check constraints
+(none)
+
+Indexes
+Name       | Columns | Unique | Type  | Visible | Comment
+-----------+---------+--------+-------+---------+--------
+plain_pkey | id      | YES    | btree | YES     |
+
+Triggers
+(none)
+
+Table options
+Option        | Value
+--------------+---------
+access_method | heap
+owner         | postgres
+comment       |

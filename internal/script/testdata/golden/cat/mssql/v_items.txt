@@ -1,0 +1,6 @@
+CREATE VIEW sales.v_items
+AS
+SELECT id, name, price * qty AS amount
+FROM sales.items
+WHERE status <> 'done'
+WITH CHECK OPTION;

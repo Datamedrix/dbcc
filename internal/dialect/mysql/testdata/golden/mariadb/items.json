@@ -444,7 +444,9 @@
       "Unique": true,
       "Type": "BTREE",
       "Invisible": false,
-      "Comment": ""
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
     },
     {
       "Name": "ft_name",
@@ -459,7 +461,9 @@
       "Unique": false,
       "Type": "FULLTEXT",
       "Invisible": false,
-      "Comment": ""
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
     },
     {
       "Name": "ix_name_prefix",
@@ -474,7 +478,9 @@
       "Unique": false,
       "Type": "BTREE",
       "Invisible": false,
-      "Comment": ""
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
     },
     {
       "Name": "ix_parent",
@@ -495,7 +501,9 @@
       "Unique": false,
       "Type": "BTREE",
       "Invisible": false,
-      "Comment": ""
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
     },
     {
       "Name": "ix_price_desc",
@@ -516,7 +524,9 @@
       "Unique": false,
       "Type": "BTREE",
       "Invisible": false,
-      "Comment": ""
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
     },
     {
       "Name": "ix_total",
@@ -531,7 +541,9 @@
       "Unique": false,
       "Type": "BTREE",
       "Invisible": false,
-      "Comment": ""
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
     },
     {
       "Name": "uq_code_region",
@@ -552,7 +564,9 @@
       "Unique": true,
       "Type": "BTREE",
       "Invisible": false,
-      "Comment": ""
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
     }
   ],
   "Triggers": [

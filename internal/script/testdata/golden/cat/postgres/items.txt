@@ -1,0 +1,70 @@
+table "app"."items" -- items with everything
+
+Columns
+#  | Field     | Type                     | Null | Key | Default                                   | Extra                                               | Comment
+---+-----------+--------------------------+------+-----+-------------------------------------------+-----------------------------------------------------+--------------
+ 1 | id        | bigint                   | NO   | PRI |                                           | GENERATED ALWAYS AS IDENTITY                        | surrogate key
+ 2 | seq_no    | integer                  | NO   |     | nextval('app.items_seq_no_seq'::regclass) | auto_increment                                      |
+ 3 | code      | character varying(20)    | NO   | MUL |                                           |                                                     |
+ 4 | region    | character(2)             | NO   |     | 'EU'                                      |                                                     |
+ 5 | name      | text                     | NO   |     |                                           |                                                     |
+ 6 | note      | character varying(40)    | YES  |     | 'NULL'                                    |                                                     |
+ 7 | nothing   | character varying(40)    | YES  |     | NULL                                      |                                                     |
+ 8 | quote_str | character varying(10)    | NO   |     | 'it''s'                                   |                                                     |
+ 9 | price     | numeric(10,2)            | NO   |     | 0.00                                      |                                                     |
+10 | qty       | integer                  | NO   |     | 1                                         |                                                     |
+11 | ratio     | double precision         | YES  |     | -1.5                                      |                                                     |
+12 | total     | numeric(12,2)            | YES  |     |                                           | GENERATED ALWAYS AS (price * (qty)::numeric) STORED |
+13 | status    | app.status               | NO   |     | 'new'                                     |                                                     |
+14 | tags      | text[]                   | YES  |     | NULL                                      |                                                     |
+15 | doc       | jsonb                    | YES  |     | NULL                                      |                                                     |
+16 | bin       | bytea                    | YES  |     | NULL                                      |                                                     |
+17 | uid       | uuid                     | NO   | UNI | gen_random_uuid()                         |                                                     |
+18 | ticket    | integer                  | YES  |     | nextval('app.ticket_seq'::regclass)       |                                                     |
+19 | created   | timestamp with time zone | NO   |     | now()                                     |                                                     |
+20 | day       | date                     | YES  |     | NULL                                      |                                                     |
+21 | small     | smallint                 | YES  |     | NULL                                      |                                                     |
+22 | parent_a  | integer                  | YES  |     | NULL                                      |                                                     |
+23 | parent_b  | character varying(20)    | YES  |     | NULL                                      |                                                     |
+
+Primary and unique keys
+Key         | Name           | Columns
+------------+----------------+-------------
+PRIMARY KEY | items_pkey     | id
+UNIQUE      | uq_code_region | code, region
+UNIQUE      | uq_items_uid   | uid
+
+Foreign keys
+Name      | Columns            | References            | On update | On delete
+----------+--------------------+-----------------------+-----------+----------
+fk_parent | parent_a, parent_b | "app"."parent" (a, b) | RESTRICT  | CASCADE
+
+Check constraints
+Name     | Expression                                         | Enforced
+---------+----------------------------------------------------+---------
+chk_code | code::text <> ''::text AND code::text !~ ';'::text | YES
+chk_qty  | qty > 0 AND qty < 100000                           | YES
+
+Indexes
+Name                | Columns                    | Include | Filter                        | Unique | Type  | Visible | Comment
+--------------------+----------------------------+---------+-------------------------------+--------+-------+---------+--------
+items_pkey          | id                         |         |                               | YES    | btree | YES     |
+ix_items_active     | code varchar_pattern_ops   | qty     | status = 'active'::app.status | NO     | btree | YES     |
+ix_items_doc        | doc jsonb_path_ops         |         |                               | NO     | gin   | YES     |
+ix_items_lower_name | (lower(name))              |         |                               | NO     | btree | YES     |
+ix_items_price_desc | price DESC NULLS LAST, qty |         |                               | NO     | btree | YES     |
+uq_code_region      | code, region               |         |                               | YES    | btree | YES     |
+uq_items_uid        | uid                        |         |                               | YES    | btree | YES     |
+
+Triggers
+Name            | Timing | Event
+----------------+--------+---------------------------------------------------------
+trg_items_bi    | BEFORE | INSERT OR UPDATE OF note FOR EACH ROW WHEN (new.qty > 0)
+trg_items_trunc | AFTER  | TRUNCATE FOR EACH STATEMENT (disabled)
+
+Table options
+Option        | Value
+--------------+----------------------
+access_method | heap
+owner         | postgres
+comment       | items with everything

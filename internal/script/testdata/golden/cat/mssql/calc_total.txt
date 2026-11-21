@@ -1,0 +1,10 @@
+/* A procedure with a block comment before CREATE */
+CREATE PROCEDURE sales.calc_total
+    @min_qty int = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT SUM(total) AS total FROM sales.items WHERE qty >= @min_qty;
+
+    SELECT COUNT(*) AS n FROM sales.items;
+END

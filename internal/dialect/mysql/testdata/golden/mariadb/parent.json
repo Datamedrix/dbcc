@@ -80,7 +80,9 @@
       "Unique": true,
       "Type": "BTREE",
       "Invisible": false,
-      "Comment": ""
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
     }
   ],
   "Triggers": null,

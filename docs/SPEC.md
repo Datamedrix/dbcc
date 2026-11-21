@@ -684,6 +684,8 @@ dbcc.command{
 | `dbcc.commands()` | List registered commands with usage and help |
 | `ctx:history(n)` | The last n history entries |
 
+Parameters of `ctx:query`, `ctx:exec` and `ctx:grid` are written as `?` in every dialect: when arguments are passed, the runtime rewrites each `?` outside strings, comments and quoted identifiers into the dialect's placeholder (`$1…` on PostgreSQL, `@p1…` on MSSQL). Without arguments the statement is sent unchanged (`?` is also a jsonb operator on PostgreSQL). Scripts may also write the native placeholders directly; mixing both in one statement is not supported.
+
 All primitives work in headless mode: `ctx:grid`, `ctx:rows`, `ctx:text`, `ctx:about` and `ctx:editor_open` print to stdout (so `dbcc -c "edit calc_total"` prints the replace script); `ctx:confirm` fails unless `--yes` is given; `ctx:pick` and `ctx:editor_set` fail with a clear message.
 
 The default commands are the contract tests of this API. A change to a primitive must keep all of them passing.

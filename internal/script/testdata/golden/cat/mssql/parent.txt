@@ -1,0 +1,34 @@
+table [dbcc_it_cat].[dbo].[parent]
+
+Columns
+# | Field | Type         | Null | Key | Default | Extra | Comment
+--+-------+--------------+------+-----+---------+-------+--------
+1 | a     | int          | NO   | PRI |         |       |
+2 | b     | nvarchar(20) | NO   | PRI |         |       |
+3 | label | nvarchar(40) | YES  |     | NULL    |       |
+
+Primary and unique keys
+Key         | Name      | Columns
+------------+-----------+--------
+PRIMARY KEY | PK_parent | a, b
+
+Foreign keys
+(none)
+
+Check constraints
+(none)
+
+Indexes
+Name      | Columns | Unique | Type      | Visible | Comment
+----------+---------+--------+-----------+---------+--------
+PK_parent | a, b    | YES    | CLUSTERED | YES     |
+
+Triggers
+(none)
+
+Table options
+Option          | Value
+----------------+--------
+rows (estimate) | <masked>
+filegroup       | PRIMARY
+comment         |

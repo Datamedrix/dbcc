@@ -161,7 +161,11 @@ local function describe(ctx, obj)
       local s = c.name
       if c.expression then s = paren(s) end
       if c.sub_part > 0 then s = s .. "(" .. c.sub_part .. ")" end
-      if c.descending then s = s .. " DESC" end
+      if c.descending then
+        -- PostgreSQL appends NULLS FIRST/LAST to the name: DESC goes before it.
+        local base, nulls = s:match("^(.-)( NULLS %a+)$")
+        if base then s = base .. " DESC" .. nulls else s = s .. " DESC" end
+      end
       cols[#cols + 1] = s
     end
     local row = { ix.name, list(cols) }

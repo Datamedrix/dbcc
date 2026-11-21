@@ -1,0 +1,69 @@
+table [dbcc_it_cat].[sales].[items] -- Items for sale
+
+Columns
+#  | Field      | Type             | Null | Key | Default                           | Extra                                       | Comment
+---+------------+------------------+------+-----+-----------------------------------+---------------------------------------------+-------------
+ 1 | id         | int              | NO   | PRI |                                   | IDENTITY(100,5)                             |
+ 2 | code       | [dbo].[code_t]   | NO   | UNI |                                   |                                             |
+ 3 | name       | nvarchar(80)     | NO   | MUL | 'unnamed'                         |                                             | display name
+ 4 | note       | nvarchar(max)    | YES  |     | NULL                              |                                             |
+ 5 | no_default | varchar(10)      | NO   |     |                                   |                                             |
+ 6 | price      | decimal(10,2)    | NO   | MUL | 0                                 |                                             |
+ 7 | qty        | smallint         | NO   |     | 1                                 |                                             |
+ 8 | total      | decimal(16,2)    | YES  |     |                                   | GENERATED ALWAYS AS ([price]*[qty]) STORED  |
+ 9 | label      | nvarchar(80)     | YES  |     |                                   | GENERATED ALWAYS AS (upper([name])) VIRTUAL |
+10 | created    | datetime2(3)     | NO   | MUL | sysutcdatetime()                  |                                             |
+11 | rate       | float            | YES  |     | -1.5                              |                                             |
+12 | small      | real             | YES  |     | NULL                              |                                             |
+13 | tiny       | tinyint          | YES  |     | NULL                              |                                             |
+14 | flag       | bit              | NO   |     | 0                                 |                                             |
+15 | guid       | uniqueidentifier | YES  | UNI | newid()                           |                                             |
+16 | bin        | varbinary(16)    | YES  |     | NULL                              |                                             |
+17 | ver        | timestamp        | NO   |     |                                   |                                             |
+18 | parent_a   | int              | YES  |     | NULL                              |                                             |
+19 | parent_b   | nvarchar(20)     | YES  |     | NULL                              |                                             |
+20 | order_no   | bigint           | YES  |     | NEXT VALUE FOR [sales].[order_no] |                                             |
+21 | status     | varchar(10)      | NO   |     | 'new'                             |                                             |
+
+Primary and unique keys
+Key         | Name          | Columns
+------------+---------------+-------------
+PRIMARY KEY | PK_items      | id
+UNIQUE      | UQ_items_code | code
+UNIQUE      | UX_items_name | name, status
+
+Foreign keys
+Name            | Columns            | References                          | On update | On delete
+----------------+--------------------+-------------------------------------+-----------+----------
+FK_items_parent | parent_a, parent_b | [dbcc_it_cat].[dbo].[parent] (a, b) | NO ACTION | CASCADE
+
+Check constraints
+Name               | Expression                                               | Enforced
+-------------------+----------------------------------------------------------+---------
+CK_items_price_qty | ([price]>=(0) AND [qty]<(1000))                          | NO
+CK_items_qty       | ([qty]>=(0))                                             | YES
+CK_items_status    | ([status]='done' OR [status]='active' OR [status]='new') | YES
+
+Indexes
+Name              | Columns           | Include   | Filter               | Unique | Type         | Visible | Comment
+------------------+-------------------+-----------+----------------------+--------+--------------+---------+--------
+PK_items          | id DESC           |           |                      | YES    | NONCLUSTERED | YES     |
+CIX_items_created | created           |           |                      | NO     | CLUSTERED    | YES     |
+IX_items_price    | price DESC        | name, qty | ([qty]>(0))          | NO     | NONCLUSTERED | YES     |
+UQ_items_code     | code              |           |                      | YES    | NONCLUSTERED | YES     |
+UX_items_guid     | guid              |           | ([guid] IS NOT NULL) | YES    | NONCLUSTERED | YES     |
+UX_items_name     | name, status DESC |           |                      | YES    | NONCLUSTERED | YES     |
+
+Triggers
+Name          | Timing | Event
+--------------+--------+---------------
+trg_items_ins | AFTER  | INSERT, UPDATE
+
+Table options
+Option                          | Value
+--------------------------------+---------------
+rows (estimate)                 | <masked>
+filegroup                       | PRIMARY
+index IX_items_price fillfactor | 80
+index UQ_items_code constraint  | UNIQUE
+comment                         | Items for sale

@@ -15,6 +15,7 @@ import (
 
 	"dbcc/internal/command"
 	"dbcc/internal/config"
+	"dbcc/internal/dialect"
 	"dbcc/internal/exec"
 	"dbcc/internal/history"
 	"dbcc/internal/meta"
@@ -651,8 +652,14 @@ func (a *App) confirmObjectReplace(s *session.Session, tab *editor.Tab) error {
 	}
 	if s.Profile.ConfirmWrites {
 		msg := "Replace " + tab.Title + " on " + s.Profile.Name + "?"
-		if s.Dialect.Name() == "mysql" {
-			msg += "\n\nMySQL replaces routines with DROP + CREATE: this is not atomic, and privileges granted on the routine are removed when automatic_sp_privileges = 1 (the default)."
+		if w, ok := s.Dialect.(dialect.ReplaceWarner); ok {
+			kind := meta.ObjectKind("")
+			if ref, ok := tab.Object.(*script.ObjectRef); ok {
+				kind = ref.Kind
+			}
+			if txt := w.ReplaceWarning(kind); txt != "" {
+				msg += "\n\n" + txt
+			}
 		}
 		ok, _ := (&host{a}).Confirm(msg)
 		if !ok {

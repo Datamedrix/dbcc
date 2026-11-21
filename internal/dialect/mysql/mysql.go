@@ -343,3 +343,13 @@ func (m *MySQL) WarningCount(ctx context.Context, c dialect.Conn) (int, error) {
 	err := c.QueryRowContext(ctx, "SELECT @@warning_count").Scan(&n)
 	return n, err
 }
+
+// ReplaceWarning implements dialect.ReplaceWarner (A21, verified on MySQL
+// 8.4): MySQL replaces routines, triggers and events with DROP + CREATE.
+// MariaDB uses CREATE OR REPLACE and keeps privileges.
+func (m *MySQL) ReplaceWarning(kind meta.ObjectKind) string {
+	if m.MariaDB || kind == meta.KindView {
+		return ""
+	}
+	return "MySQL replaces this object with DROP + CREATE: this is not atomic, and privileges granted on a routine are removed when automatic_sp_privileges = 1 (the default)."
+}

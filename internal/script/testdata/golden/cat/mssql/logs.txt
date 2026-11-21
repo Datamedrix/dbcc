@@ -1,0 +1,37 @@
+table [dbcc_it_cat].[dbo].[logs]
+
+Columns
+# | Field      | Type          | Null | Key | Default | Extra                                                      | Comment
+--+------------+---------------+------+-----+---------+------------------------------------------------------------+--------
+1 | id         | int           | NO   | PRI |         |                                                            |
+2 | msg        | nvarchar(100) | YES  |     | NULL    |                                                            |
+3 | valid_from | datetime2(7)  | NO   |     |         | GENERATED ALWAYS AS (GENERATED ALWAYS AS ROW START) STORED |
+4 | valid_to   | datetime2(7)  | NO   |     |         | GENERATED ALWAYS AS (GENERATED ALWAYS AS ROW END) STORED   |
+
+Primary and unique keys
+Key         | Name    | Columns
+------------+---------+--------
+PRIMARY KEY | PK_logs | id
+
+Foreign keys
+(none)
+
+Check constraints
+(none)
+
+Indexes
+Name    | Columns | Unique | Type      | Visible | Comment
+--------+---------+--------+-----------+---------+--------
+PK_logs | id      | YES    | CLUSTERED | YES     |
+
+Triggers
+(none)
+
+Table options
+Option          | Value
+----------------+--------------------------------
+rows (estimate) | <masked>
+filegroup       | PRIMARY
+history_table   | [dbo].[logs_history]
+temporal        | SYSTEM_VERSIONED_TEMPORAL_TABLE
+comment         |

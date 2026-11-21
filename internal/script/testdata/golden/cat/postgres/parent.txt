@@ -1,0 +1,34 @@
+table "app"."parent" -- parent of items
+
+Columns
+# | Field | Type                  | Null | Key | Default | Extra | Comment
+--+-------+-----------------------+------+-----+---------+-------+----------
+1 | a     | integer               | NO   | PRI |         |       |
+2 | b     | character varying(20) | NO   | PRI |         |       |
+3 | label | text                  | YES  |     | NULL    |       | free text
+
+Primary and unique keys
+Key         | Name        | Columns
+------------+-------------+--------
+PRIMARY KEY | parent_pkey | a, b
+
+Foreign keys
+(none)
+
+Check constraints
+(none)
+
+Indexes
+Name        | Columns | Unique | Type  | Visible | Comment
+------------+---------+--------+-------+---------+--------
+parent_pkey | a, b    | YES    | btree | YES     |
+
+Triggers
+(none)
+
+Table options
+Option        | Value
+--------------+----------------
+access_method | heap
+owner         | postgres
+comment       | parent of items

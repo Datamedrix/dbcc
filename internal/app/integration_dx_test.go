@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"dbcc/internal/command"
 	"dbcc/internal/config"
 	"dbcc/internal/exec"
 	"dbcc/internal/session"
@@ -780,5 +781,26 @@ func TestMultipleResultSets(t *testing.T) {
 			}
 			s.CloseCursor()
 		})
+	}
+}
+
+// TestEveryDefaultCommandIsTestedDX keeps the PostgreSQL/MSSQL contract
+// tests complete: a new default command needs a test here too.
+func TestEveryDefaultCommandIsTestedDX(t *testing.T) {
+	tested := map[string]string{
+		"cd": "TestDXDataAndNavigation", "ls": "TestDXDataAndNavigation", "pwd": "TestDXDataAndNavigation",
+		"ll": "TestDXDataAndNavigation", "head": "TestDXDataAndNavigation", "wc": "TestDXDataAndNavigation",
+		"cat": "TestDXCatEdit", "edit": "TestDXCatEdit", "cp": "TestDXCpMv", "mv": "TestDXCpMv",
+		"du": "TestDXDuGrepPs", "grep": "TestDXDuGrepPs", "ps": "TestDXDuGrepPs", "kill": "TestDXKill",
+		"export": "TestDXExportHistoryHelp", "history": "TestDXExportHistoryHelp", "help": "TestDXExportHistoryHelp",
+	}
+	names, err := command.DefaultScripts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range names {
+		if _, ok := tested[strings.TrimSuffix(n, ".lua")]; !ok {
+			t.Errorf("default command %s has no PostgreSQL/MSSQL headless integration test", n)
+		}
 	}
 }

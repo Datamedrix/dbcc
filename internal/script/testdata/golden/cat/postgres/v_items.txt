@@ -1,0 +1,7 @@
+CREATE VIEW "app"."v_items" WITH (security_barrier=true) AS
+SELECT i.id,
+    i.code,
+    p.label
+   FROM app.items i
+     LEFT JOIN app.parent p ON p.a = i.parent_a AND p.b::text = i.parent_b::text
+  WHERE i.qty > 0

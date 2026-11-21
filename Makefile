@@ -6,6 +6,10 @@ LDFLAGS := -s -w -X dbcc/internal/branding.Version=$(VERSION) -X dbcc/internal/b
 export DBCC_IT_MYSQL   ?= 127.0.0.1:13306
 export DBCC_IT_MARIADB ?= 127.0.0.1:13307
 export DBCC_IT_PW      ?= dbcctest
+export DBCC_IT_POSTGRES ?= 127.0.0.1:15432
+export DBCC_IT_PG_PW    ?= dbcctest
+export DBCC_IT_MSSQL    ?= 127.0.0.1:11433
+export DBCC_IT_MSSQL_PW ?= Dbcc-test-2026
 
 .PHONY: build test itest static-check test-servers
 build:
@@ -25,3 +29,5 @@ static-check: build
 test-servers:
 	docker start dbcc-test-mysql 2>/dev/null || docker run -d --name dbcc-test-mysql -e MYSQL_ROOT_PASSWORD=$(DBCC_IT_PW) -p 127.0.0.1:13306:3306 mysql:8.4
 	docker start dbcc-test-mariadb 2>/dev/null || docker run -d --name dbcc-test-mariadb -e MARIADB_ROOT_PASSWORD=$(DBCC_IT_PW) -p 127.0.0.1:13307:3306 mariadb:11
+	docker start dbcc-test-postgres 2>/dev/null || docker run -d --name dbcc-test-postgres -e POSTGRES_PASSWORD=$(DBCC_IT_PG_PW) -p 127.0.0.1:15432:5432 postgres:17
+	docker start dbcc-test-mssql 2>/dev/null || docker run -d --name dbcc-test-mssql -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=$(DBCC_IT_MSSQL_PW) -p 127.0.0.1:11433:1433 mcr.microsoft.com/mssql/server:2022-latest

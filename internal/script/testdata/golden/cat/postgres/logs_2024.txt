@@ -1,0 +1,35 @@
+table "app"."logs_2024"
+
+Columns
+# | Field   | Type   | Null | Key | Default | Extra | Comment
+--+---------+--------+------+-----+---------+-------+--------
+1 | id      | bigint | NO   | PRI |         |       |
+2 | created | date   | NO   | PRI |         |       |
+3 | msg     | text   | YES  |     | NULL    |       |
+
+Primary and unique keys
+Key         | Name           | Columns
+------------+----------------+------------
+PRIMARY KEY | logs_2024_pkey | id, created
+
+Foreign keys
+(none)
+
+Check constraints
+(none)
+
+Indexes
+Name           | Columns     | Unique | Type  | Visible | Comment
+---------------+-------------+--------+-------+---------+--------
+logs_2024_pkey | id, created | YES    | btree | YES     |
+
+Triggers
+(none)
+
+Table options
+Option        | Value
+--------------+----------------------------------------------------------
+access_method | heap
+owner         | postgres
+partition_of  | app.logs FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')
+comment       |
