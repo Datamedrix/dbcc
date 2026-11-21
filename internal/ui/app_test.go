@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -150,4 +151,16 @@ func TestEditorTypingRunsWithoutConnection(t *testing.T) {
 	waitFor(t, a, scr, "SELECT 1;", 2*time.Second)
 	scr.InjectKey(tcell.KeyF5, 0, tcell.ModNone)
 	waitFor(t, a, scr, "no connection: F2 opens the connections", 2*time.Second)
+}
+
+func TestWatchdogDumpsHungUI(t *testing.T) {
+	state := t.TempDir()
+	a, scr, stop := startApp(t, emptyConfig(), Options{NoSplash: true, StateDir: state})
+	defer stop()
+	waitFor(t, a, scr, "1Help", 2*time.Second)
+	if name := a.writeDump("test"); name == "" {
+		t.Fatal("no dump written")
+	} else if data, _ := os.ReadFile(name); !strings.Contains(string(data), "goroutine") {
+		t.Fatalf("dump lacks stacks: %.200s", data)
+	}
 }

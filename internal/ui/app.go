@@ -142,6 +142,7 @@ func (a *App) Run(ctx context.Context) error {
 	a.tv.EnablePaste(true)
 
 	go a.worker()
+	a.startWatchdog()
 
 	showSplash := a.cfg.Settings.Splash && !a.opts.NoSplash
 	if showSplash {
