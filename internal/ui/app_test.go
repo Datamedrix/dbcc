@@ -190,3 +190,15 @@ func TestWatchdogFiresWhenEventLoopSpins(t *testing.T) {
 		t.Fatal("watchdog wrote no dump while the event loop was blocked")
 	}
 }
+
+func TestQuickNavigationAltF1F2F3(t *testing.T) {
+	a, scr, stop := startApp(t, emptyConfig(), Options{NoSplash: true})
+	defer stop()
+	waitFor(t, a, scr, "6RunAll", 2*time.Second) // editor focused
+	scr.InjectKey(tcell.KeyF1, 0, tcell.ModAlt)
+	waitFor(t, a, scr, "5Reload", 2*time.Second) // tree
+	scr.InjectKey(tcell.KeyF3, 0, tcell.ModAlt)
+	waitFor(t, a, scr, "3Pivot", 2*time.Second) // results
+	scr.InjectKey(tcell.KeyF2, 0, tcell.ModAlt)
+	waitFor(t, a, scr, "6RunAll", 2*time.Second) // editor
+}

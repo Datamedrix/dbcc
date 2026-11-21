@@ -40,7 +40,7 @@ func (h *host) Result(r *exec.Result) {
 	}
 	a.tv.QueueUpdateDraw(func() {
 		t := a.results.AddResult(r, a.gridOptionsFor(r))
-		if p := a.pane(); p == PaneCmd || p == PaneTree || p == PaneGrid {
+		if p := a.pane(); p == PaneCmd || p == PaneGrid { // the tree keeps its focus (owner request)
 			a.tv.SetFocus(t.primitive())
 		}
 	})
@@ -55,7 +55,7 @@ func (h *host) Text(title, text, lexer string) {
 	}
 	a.tv.QueueUpdateDraw(func() {
 		t := a.results.AddText(title, text, lexer)
-		if p := a.pane(); p == PaneCmd || p == PaneTree || p == PaneGrid {
+		if p := a.pane(); p == PaneCmd || p == PaneGrid { // the tree keeps its focus (owner request)
 			a.tv.SetFocus(t.primitive())
 		}
 	})

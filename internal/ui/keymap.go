@@ -56,6 +56,9 @@ func DefaultKeymap() *Keymap {
 	add(g, "cancel", "f8", "Cancel", "Cancel the running statement")
 	add(g, "cmdline", "f9", "Cmd", "Focus the command line")
 	add(g, "quit", "f10", "Quit", "Quit")
+	add(g, "focus_tree", "alt+f1", "", "Go to the object tree")
+	add(g, "focus_editor", "alt+f2", "", "Go to the editor (scratchpad)")
+	add(g, "focus_results", "alt+f3", "", "Go to the results")
 	add(g, "next_pane", "tab", "", "Next pane")
 	add(g, "prev_pane", "backtab", "", "Previous pane")
 

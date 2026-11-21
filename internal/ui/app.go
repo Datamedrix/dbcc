@@ -470,6 +470,12 @@ func (a *App) handle(pane, action string) bool {
 		a.tv.SetFocus(a.cmd)
 	case "quit":
 		a.requestQuit()
+	case "focus_tree":
+		a.tv.SetFocus(a.tree)
+	case "focus_editor":
+		a.tv.SetFocus(a.editors)
+	case "focus_results":
+		a.tv.SetFocus(a.results.Current().primitive())
 	case "next_pane", "prev_pane":
 		a.cycleFocus(action == "next_pane")
 	default:
