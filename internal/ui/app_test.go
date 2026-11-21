@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -162,5 +163,30 @@ func TestWatchdogDumpsHungUI(t *testing.T) {
 		t.Fatal("no dump written")
 	} else if data, _ := os.ReadFile(name); !strings.Contains(string(data), "goroutine") {
 		t.Fatalf("dump lacks stacks: %.200s", data)
+	}
+}
+
+// TestWatchdogFiresWhenEventLoopSpins blocks the UI goroutine and expects
+// the watchdog to write a dump although tview's update queue fills up.
+func TestWatchdogFiresWhenEventLoopSpins(t *testing.T) {
+	state := t.TempDir()
+	a, scr, stop := startApp(t, emptyConfig(), Options{NoSplash: true, StateDir: state})
+	waitFor(t, a, scr, "1Help", 2*time.Second)
+	release := make(chan struct{})
+	go a.tv.QueueUpdate(func() { <-release }) // the event loop hangs here (QueueUpdate is synchronous)
+	for i := 0; i < 150; i++ {                // fill tview's update queue (capacity 100)
+		go a.tv.QueueUpdate(func() {})
+	}
+	deadline := time.Now().Add(watchdogInterval + watchdogTimeout + 3*time.Second)
+	var found bool
+	for time.Now().Before(deadline) && !found {
+		matches, _ := filepath.Glob(filepath.Join(state, "hang-*-ui-unresponsive.txt"))
+		found = len(matches) > 0
+		time.Sleep(100 * time.Millisecond)
+	}
+	close(release)
+	stop()
+	if !found {
+		t.Fatal("watchdog wrote no dump while the event loop was blocked")
 	}
 }

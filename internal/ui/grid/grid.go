@@ -367,11 +367,55 @@ func (g *Grid) Draw(screen tcell.Screen) {
 func (g *Grid) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 	h := g.Table.InputHandler()
 	return func(ev *tcell.EventKey, setFocus func(p tview.Primitive)) {
+		if g.emptyKey(ev) {
+			return
+		}
 		if g.content.pivot && g.pivotKey(ev) {
 			return
 		}
 		h(ev, setFocus)
 	}
+}
+
+// emptyKey handles navigation when there is nothing selectable: a result
+// without records has only the non-selectable header row (normal view) or
+// attribute column (pivot view). tview's selection search would then loop
+// forever, because the selection sits on a cell that never comes round
+// again — that froze the UI on empty tables. Left/Right still scroll the
+// columns; the other navigation keys do nothing.
+func (g *Grid) emptyKey(ev *tcell.EventKey) bool {
+	empty := g.content.src == nil || g.content.GetRowCount() <= 1 // header only
+	if g.content.pivot {
+		empty = g.content.src == nil || g.content.GetColumnCount() <= 1 // attribute column only
+	}
+	if !empty {
+		return false
+	}
+	rowOff, colOff := g.Table.GetOffset()
+	maxCol := max(g.content.GetColumnCount()-1, 0)
+	switch ev.Key() {
+	case tcell.KeyLeft:
+		g.Table.SetOffset(rowOff, max(colOff-1, 0))
+		return true
+	case tcell.KeyRight:
+		g.Table.SetOffset(rowOff, min(colOff+1, maxCol))
+		return true
+	case tcell.KeyUp, tcell.KeyDown, tcell.KeyPgUp, tcell.KeyPgDn, tcell.KeyHome, tcell.KeyEnd,
+		tcell.KeyCtrlF, tcell.KeyCtrlB, tcell.KeyTab, tcell.KeyBacktab, tcell.KeyEnter:
+		return true
+	case tcell.KeyRune:
+		switch ev.Rune() {
+		case 'h':
+			g.Table.SetOffset(rowOff, max(colOff-1, 0))
+			return true
+		case 'l':
+			g.Table.SetOffset(rowOff, min(colOff+1, maxCol))
+			return true
+		case 'j', 'k', 'g', 'G':
+			return true
+		}
+	}
+	return false
 }
 
 func (g *Grid) pivotKey(ev *tcell.EventKey) bool {

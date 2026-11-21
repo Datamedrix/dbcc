@@ -181,6 +181,7 @@ type Cursor struct {
 	exhausted bool // reached the end of this result set
 	closed    bool
 	onClose   func()
+	abort     func() // stops the statement on the server (see Close)
 	err       error
 }
 
@@ -215,11 +216,42 @@ func (c *Cursor) Fetch(n int) ([]Row, error) {
 	return out, c.err
 }
 
-// Close releases the underlying rows; idempotent.
+// DrainGrace is how long closing a cursor with unread rows may take
+// before the statement is aborted on the server. Drivers cannot stop a
+// result stream on their own: closing reads and discards every remaining
+// row, which takes minutes on large tables.
+var DrainGrace = 200 * time.Millisecond
+
+// Close releases the underlying rows; idempotent. If unread rows remain
+// and discarding them takes longer than DrainGrace, the statement is
+// aborted on the server (KILL QUERY or driver cancel) and the connection
+// stays usable.
 func (c *Cursor) Close() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.closeLocked()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	abort, pending := c.abort, !c.exhausted
+	if !pending || abort == nil {
+		c.closeLocked()
+		c.mu.Unlock()
+		return nil
+	}
+	c.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		c.mu.Lock()
+		c.closeLocked()
+		c.mu.Unlock()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(DrainGrace):
+		abort()
+		<-done
+	}
 	return nil
 }
 

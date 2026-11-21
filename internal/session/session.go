@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"dbcc/internal/config"
 	"dbcc/internal/dialect"
@@ -172,6 +173,22 @@ func (s *Session) StatementContext(parent context.Context) (ctx context.Context,
 		if !keepOpen {
 			cancel()
 		}
+	}
+}
+
+// AbortStreaming stops a statement whose result the server is still
+// sending: KILL QUERY on MySQL/MariaDB, or cancel (the statement context
+// of the stream) on dialects that cancel via the driver. The connection
+// and its transaction stay intact.
+func (s *Session) AbortStreaming(cancel context.CancelFunc) {
+	s.mu.Lock()
+	id, aux := s.id, s.auxDB
+	s.mu.Unlock()
+	ctx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stop()
+	err := s.Dialect.Cancel(ctx, aux, id)
+	if errors.Is(err, dialect.ErrCancelViaContext) && cancel != nil {
+		cancel()
 	}
 }
 

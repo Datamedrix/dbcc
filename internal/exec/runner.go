@@ -140,6 +140,14 @@ func (r *Runner) RunStatement(ctx context.Context, st sqltext.Statement, last bo
 	ctx, done := r.Sess.StatementContext(ctx)
 	keepOpen := false
 	defer func() { done(keepOpen) }()
+	// The stream context of a lazy result outlives this call; AbortStreaming
+	// cancels it on dialects that cancel via the driver.
+	ctx, streamCancel := context.WithCancel(ctx)
+	defer func() {
+		if !keepOpen {
+			streamCancel()
+		}
+	}()
 	began, err := r.begin(ctx, st.Text)
 	if err != nil {
 		return fail(err)
@@ -190,7 +198,8 @@ func (r *Runner) RunStatement(ctx context.Context, st sqltext.Statement, last bo
 			res.cursor = cur
 			if lazy {
 				closer := closerFunc(func() error { res.markPartial(); return cur.Close() })
-				cur.onClose = func() { r.Sess.ReleaseCursor(closer) }
+				cur.onClose = func() { r.Sess.ReleaseCursor(closer); streamCancel() }
+				cur.abort = func() { r.Sess.AbortStreaming(streamCancel) }
 				r.Sess.SetCursor(closer)
 				if _, err := res.Fetch(r.FetchSize); err != nil {
 					msg.Duration = time.Since(start)
@@ -518,6 +527,14 @@ func (r *Runner) Grid(ctx context.Context, q string, origin *Origin, args ...any
 	ctx, done := r.Sess.StatementContext(ctx)
 	keepOpen := false
 	defer func() { done(keepOpen) }()
+	// The stream context of a lazy result outlives this call; AbortStreaming
+	// cancels it on dialects that cancel via the driver.
+	ctx, streamCancel := context.WithCancel(ctx)
+	defer func() {
+		if !keepOpen {
+			streamCancel()
+		}
+	}()
 	began, err := r.begin(ctx, q)
 	if err != nil {
 		msg.Err, msg.Duration = err, time.Since(start)
@@ -547,7 +564,8 @@ func (r *Runner) Grid(ctx context.Context, q string, origin *Origin, args ...any
 	cur := &Cursor{rows: rows, cols: cols}
 	res.cursor = cur
 	closer := closerFunc(func() error { res.markPartial(); return cur.Close() })
-	cur.onClose = func() { r.Sess.ReleaseCursor(closer) }
+	cur.onClose = func() { r.Sess.ReleaseCursor(closer); streamCancel() }
+	cur.abort = func() { r.Sess.AbortStreaming(streamCancel) }
 	r.Sess.SetCursor(closer)
 	if _, err := res.Fetch(r.FetchSize); err != nil {
 		r.Sess.CloseCursor()

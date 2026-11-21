@@ -509,6 +509,13 @@ func (t *Tree) input(ev *tcell.EventKey) *tcell.EventKey {
 		return ev
 	}
 	switch ev.Key() {
+	case tcell.KeyHome:
+		// The connection node is hidden (SetTopLevel(1)); tview's Home
+		// would select it, so select the first visible node instead.
+		if cs := t.GetRoot().GetChildren(); len(cs) > 0 {
+			t.SetCurrentNode(cs[0])
+		}
+		return nil
 	case tcell.KeyRight:
 		if !n.IsExpanded() || len(n.GetChildren()) == 0 {
 			t.expand(n, false)

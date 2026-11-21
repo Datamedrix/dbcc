@@ -35,8 +35,11 @@ func (a *App) startWatchdog() {
 			case <-sig:
 				a.writeDump("signal")
 			case <-ticker.C:
+				// QueueUpdate blocks once tview's update queue is full,
+				// which is exactly what happens when the event loop hangs;
+				// so it runs in its own goroutine and never blocks here.
 				pong := make(chan struct{})
-				a.tv.QueueUpdate(func() { close(pong) })
+				go a.tv.QueueUpdate(func() { close(pong) })
 				select {
 				case <-pong:
 					dumped = false
