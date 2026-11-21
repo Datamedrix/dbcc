@@ -27,6 +27,8 @@ type Tab struct {
 	Key      string // object identity (object tabs)
 	Object   any    // caller's object binding (object tabs)
 	Original string // source as loaded (object tabs), for Restore
+	Conn     string // connection a scratch belongs to (NoConnection for none)
+	File     string // scratch file name in the connection's scratch folder
 	Editor   *Editor
 }
 
@@ -64,11 +66,12 @@ type Tabs struct {
 	// splitter and styles).
 	Configure func(*Editor)
 
-	tabs     []*Tab
-	cur      int
-	lexer    string
-	splitter sqltext.Splitter
-	styles   *Styles
+	tabs       []*Tab
+	cur        int
+	scratchDir string
+	lexer      string
+	splitter   sqltext.Splitter
+	styles     *Styles
 
 	BarStyle, BarCurrentStyle tcell.Style
 	spans                     [][2]int // screen x ranges of labels from the last draw

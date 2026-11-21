@@ -77,8 +77,10 @@ func DefaultKeymap() *Keymap {
 	add(e, "complete", "ctrl+space", "", "Completion list")
 	add(e, "prev_tab", "alt+,", "", "Previous editor tab")
 	add(e, "next_tab", "alt+.", "", "Next editor tab")
-	add(e, "new_tab", "alt+n", "", "New scratch tab")
-	add(e, "close_tab", "alt+x", "", "Close the tab (asks if there are unsaved changes)")
+	add(e, "new_tab", "alt+n", "", "New scratch (a file named after its creation time, saved automatically)")
+	add(e, "open_scratch", "alt+o", "", "Open a scratch (list of all scratches, newest first)")
+	add(e, "rename_scratch", "alt+e", "", "Rename the current scratch (unique per connection)")
+	add(e, "close_tab", "alt+x", "", "Close the tab (a scratch is saved first; object tabs ask about unsaved changes)")
 	add(e, "restore", "alt+r", "", "Restore the source as loaded (object tabs)")
 
 	r := PaneGrid
@@ -93,7 +95,9 @@ func DefaultKeymap() *Keymap {
 	add(r, "filter_column", "f", "", "Column filter on the current column")
 	add(r, "filter_where", "w", "", "Free WHERE (table-origin only)")
 	add(r, "clear_filters", "x", "", "Remove filters and sorting")
-	add(r, "load_all", "a", "", "Load all rows up to the cap")
+	add(r, "next_page", "n", "", "Next page (page_size rows per page; the previous page is dropped)")
+	add(r, "next_page", "f6", "NextPg", "Next page")
+	add(r, "prev_page", "p", "", "Previous page (re-runs a read query and skips the rows before it)")
 	add(r, "copy_cell", "c", "", "Copy cell")
 	add(r, "copy_row", "C", "", "Copy row")
 	add(r, "prev_result", "[", "", "Previous result tab")
@@ -110,7 +114,9 @@ func DefaultKeymap() *Keymap {
 	add(f, "cancel", "esc", "", "Cancel")
 
 	c := PaneCmd
-	add(c, "complete", "ctrl+space", "", "Complete command or argument")
+	add(c, "complete", "ctrl+space", "", "Completion list (only on demand); while open it has the focus: Up/Down/PgUp/PgDn select, Enter/Tab accept, Esc closes only the list, typing filters")
+	add(c, "history_prev", "up", "", "Previous command from the history (no list open; wraps from the oldest to the empty line)")
+	add(c, "history_next", "down", "", "Next command from the history (no list open; wraps from the empty line to the oldest)")
 	add(c, "execute", "enter", "", "Run the command or SQL")
 	return k
 }

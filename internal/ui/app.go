@@ -37,9 +37,10 @@ type Options struct {
 	NoUserCommands bool
 	Screen         tcell.Screen // tests: simulation screen
 	SplashDuration time.Duration
-	StateDir       string // default config.StateDir()
-	ConfigPath     string // where new connections are saved (default config.DefaultPath())
-	UserCmdDir     string // default config.ConfigDir()/commands
+	StateDir       string        // default config.StateDir()
+	ConfigPath     string        // where new connections are saved (default config.DefaultPath())
+	AutosaveDelay  time.Duration // scratch autosave delay (default 1 s)
+	UserCmdDir     string        // default config.ConfigDir()/commands
 }
 
 // App is the full-screen terminal UI.
@@ -80,6 +81,7 @@ type App struct {
 	cmdHistory []string
 	histPos    int
 	complete   bool // completion list requested by key (spec 5.1)
+	cmdList    bool // the command-line completion list is open
 	modalStack []string
 	lastErr    string
 
@@ -87,6 +89,7 @@ type App struct {
 	meta             *meta.Cache
 	popup            *complete.Popup
 	gridPromptClosed func()
+	autosave         *time.Timer // pending scratch autosave
 }
 
 // Run starts the UI and blocks until it quits.
@@ -177,10 +180,12 @@ func (a *App) closeSplash() {
 // startup loads commands, restores scratch tabs and connects (worker).
 func (a *App) startup() {
 	rt := script.New(script.Env{Workspace: a.ws, Host: &host{a}, Runner: a.runner, History: a.hist})
-	a.reg = command.New(rt)
-	if err := a.reg.Load(command.Options{NoUserCommands: a.opts.NoUserCommands, UserDir: a.opts.UserCmdDir}); err != nil {
+	reg := command.New(rt)
+	if err := reg.Load(command.Options{NoUserCommands: a.opts.NoUserCommands, UserDir: a.opts.UserCmdDir}); err != nil {
 		a.message(exec.Message{Err: fmt.Errorf("loading commands: %w", err)})
 	}
+	// Published on the UI goroutine, which reads it (help, completion).
+	a.ui(func() { a.reg = reg })
 	for _, w := range a.cfg.Warnings {
 		a.message(exec.Message{Info: "warning: " + w})
 	}
@@ -192,7 +197,7 @@ func (a *App) startup() {
 func (a *App) shutdown() {
 	a.quitOnce.Do(func() { close(a.quit) })
 	if a.editors != nil {
-		_ = a.editors.SaveScratch(filepath.Join(a.opts.StateDir, "scratch"))
+		_ = a.editors.SaveSession() // requestQuit already asked if saving failed
 	}
 	a.ws.CloseAll()
 }
@@ -226,15 +231,14 @@ func (a *App) build() {
 	a.editors.SetLexer("mysql")
 	a.editors.SetSplitter(sqltext.NewMySQL()) // replaced by the dialect's on connect
 	a.editors.SetStyles(editor.DefaultStyles(256))
-	a.editors.OnChange = func() {}
 	// Restore scratch tabs synchronously so that the first keystrokes have
 	// a tab to go to (local file I/O only).
-	if err := a.editors.LoadScratch(filepath.Join(a.opts.StateDir, "scratch")); err != nil {
+	a.editors.SetScratchDir(filepath.Join(a.opts.StateDir, "scratches"))
+	if err := a.editors.LoadSession(filepath.Join(a.opts.StateDir, "scratch")); err != nil {
 		a.log.Add(exec.Message{Err: fmt.Errorf("restore scratch tabs: %w", err)})
 	}
-	if a.editors.Len() == 0 {
-		a.editors.AddScratch("scratch", "")
-	}
+	a.ensureScratch()
+	a.editors.OnChange = a.scheduleAutosave
 
 	a.results.SetBorder(true)
 
@@ -242,7 +246,9 @@ func (a *App) build() {
 	a.cmd.SetLabel("/ > ")
 	a.cmd.SetDoneFunc(a.cmdDone)
 	a.cmd.SetAutocompleteFunc(a.cmdComplete)
+	a.cmd.SetAutocompletedFunc(a.cmdCompleted)
 	a.cmd.SetInputCapture(a.cmdKeys)
+	a.cmd.SetBlurFunc(func() { a.cmdList = false }) // tview drops the list on blur
 
 	a.status = NewStatusLine(t)
 	a.footer = NewFooter(t)
@@ -396,6 +402,7 @@ func (a *App) runner(s *session.Session) *exec.Runner {
 	r := exec.NewRunner(s, &host{a})
 	r.FetchSize = a.cfg.Settings.FetchSize
 	r.MaxRows = a.cfg.Settings.MaxRows
+	r.PageSize = a.cfg.Settings.PageSize // the grid pages (spec 10.2); max_rows does not apply
 	r.MaxBuffered = a.cfg.Settings.MaxRowsBuffered
 	r.AfterStatement = a.sessionHooks(s)
 	r.Confirm = func(stmt string) bool {
@@ -440,6 +447,9 @@ func (a *App) globalKeys(ev *tcell.EventKey) *tcell.EventKey {
 	pane := a.pane()
 	if a.treeInput.HasFocus() {
 		return ev
+	}
+	if a.cmdListKey(ev) {
+		return ev // the open completion list has the focus (Tab accepts, not next pane)
 	}
 	action := a.keymap.Action(pane, ev)
 	if action == "" {
@@ -487,9 +497,13 @@ func (a *App) handle(pane, action string) bool {
 		case PaneGrid:
 			return a.gridAction(action)
 		case PaneCmd:
-			if action == "complete" {
+			switch action {
+			case "complete":
 				a.complete = true
 				a.cmd.Autocomplete()
+				return true
+			case "history_prev", "history_next":
+				a.cmdHistoryStep(action == "history_next")
 				return true
 			}
 			return false
@@ -623,19 +637,32 @@ func (a *App) editorAction(action string) bool {
 		a.popup.Close()
 		a.editors.Next()
 	case "new_tab":
-		a.editors.AddScratch("", "")
+		a.newScratch()
+	case "open_scratch":
+		a.showScratches()
+	case "rename_scratch":
+		if tab != nil && tab.Kind == editor.KindScratch {
+			a.renameScratch(tab.Conn, tab.File, nil)
+		}
 	case "close_tab":
 		if tab == nil {
 			return true
 		}
 		i := a.editors.CurrentIndex()
+		if tab.Kind == editor.KindScratch {
+			// A scratch is saved before it closes; if saving fails it stays.
+			if err := a.editors.CloseScratch(i); err != nil {
+				a.modalButtons("confirm", "The scratch cannot be closed because it could not be saved:\n\n"+err.Error(), []string{"OK"}, func(int) {})
+				return true
+			}
+			a.ensureScratch()
+			return true
+		}
 		closeIt := func() {
 			a.editors.Close(i)
-			if a.editors.Len() == 0 {
-				a.editors.AddScratch("scratch", "")
-			}
+			a.ensureScratch()
 		}
-		if tab.Dirty() && tab.Kind == editor.KindObject {
+		if tab.Dirty() {
 			a.confirmUI("Close "+tab.Title+" and discard its changes?", closeIt)
 		} else {
 			closeIt()
@@ -741,13 +768,13 @@ func (a *App) gridAction(action string) bool {
 	switch action {
 	case "rerun":
 		if res := tab.Grid.Result(); res != nil {
-			sql, origin, s := res.SQL, res.Origin, a.sessionOf(res)
+			sql, args, origin, s := res.SQL, res.Args, res.Origin, a.sessionOf(res)
 			if s == nil {
 				return true
 			}
 			g := tab.Grid
 			a.do(func() {
-				nr, err := a.runner(s).Grid(context.Background(), sql, origin)
+				nr, err := a.runner(s).Grid(context.Background(), sql, origin, args...)
 				a.ui(func() {
 					if err != nil {
 						a.lastErr = oneLine(err.Error())
@@ -825,35 +852,73 @@ func (a *App) cmdDone(key tcell.Key) {
 	}
 }
 
+// cmdKeys runs after the global bindings; with the completion list open,
+// tview's InputField routes Up/Down/PgUp/PgDn/Enter/Tab/Esc to the list.
+// Esc then only closes the list (no done event: the line is kept).
 func (a *App) cmdKeys(ev *tcell.EventKey) *tcell.EventKey {
-	switch ev.Key() {
-	case tcell.KeyUp:
-		if a.histPos > 0 {
-			a.histPos--
-			a.cmd.SetText(a.cmdHistory[a.histPos])
-		}
-		return nil
-	case tcell.KeyDown:
-		if a.histPos < len(a.cmdHistory)-1 {
-			a.histPos++
-			a.cmd.SetText(a.cmdHistory[a.histPos])
-		} else {
-			a.histPos = len(a.cmdHistory)
-			a.cmd.SetText("")
-		}
-		return nil
+	if a.cmdList && ev.Key() == tcell.KeyEscape {
+		a.cmdList = false
 	}
 	return ev
 }
 
+// cmdListKey reports whether ev belongs to the open command-line
+// completion list and must bypass the global and pane bindings.
+func (a *App) cmdListKey(ev *tcell.EventKey) bool {
+	if !a.cmdList || !a.cmd.HasFocus() {
+		return false
+	}
+	switch ev.Key() {
+	case tcell.KeyUp, tcell.KeyDown, tcell.KeyPgUp, tcell.KeyPgDn,
+		tcell.KeyEnter, tcell.KeyTab, tcell.KeyEscape:
+		return true
+	}
+	return false
+}
+
+// cmdHistoryStep walks the command history like a shell, as a ring that
+// includes the empty new line: Up from the oldest entry wraps to the
+// empty line, Down from the empty line wraps to the oldest entry.
+func (a *App) cmdHistoryStep(forward bool) {
+	n := len(a.cmdHistory)
+	if n == 0 {
+		return
+	}
+	if forward {
+		a.histPos = (a.histPos + 1) % (n + 1)
+	} else {
+		a.histPos = (a.histPos + n) % (n + 1)
+	}
+	if a.histPos == n {
+		a.cmd.SetText("")
+		return
+	}
+	a.cmd.SetText(a.cmdHistory[a.histPos])
+}
+
 // cmdComplete returns candidates only when completion was requested by
-// key (spec 3.3: never automatically).
+// key (spec 3.3: never automatically) or while the list requested that
+// way is still open (tview calls it on every change: re-filter).
 func (a *App) cmdComplete(text string) []string {
-	if !a.complete || a.reg == nil {
+	if (!a.complete && !a.cmdList) || a.reg == nil {
+		a.cmdList = false
 		return nil
 	}
 	a.complete = false
-	return complete.CommandLine(a.reg, a.completer(), text)
+	c := complete.CommandLine(a.reg, a.completer(), text)
+	a.cmdList = len(c) > 0 // tview drops the list when there are no entries
+	return c
+}
+
+// cmdCompleted accepts an entry (Enter, Tab, mouse click). Navigating only
+// moves the highlight, so re-filtering keeps working on the typed text.
+func (a *App) cmdCompleted(text string, _ int, source int) bool {
+	if source == tview.AutocompletedNavigate {
+		return false
+	}
+	a.cmd.SetText(text)
+	a.cmdList = false
+	return true
 }
 
 // ---------------------------------------------------------------- quit
@@ -864,6 +929,9 @@ func (a *App) requestQuit() {
 		if t.Kind == editor.KindObject && t.Dirty() {
 			dirty = append(dirty, t.Title)
 		}
+	}
+	if err := a.editors.SaveScratches(); err != nil {
+		dirty = append(dirty, "scratches that could not be saved ("+err.Error()+")")
 	}
 	quitTxn := func() {
 		if a.openTxns() == 0 {

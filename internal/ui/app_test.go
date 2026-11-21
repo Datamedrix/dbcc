@@ -100,7 +100,7 @@ func TestSplashTimerThenMainLayout(t *testing.T) {
 		t.Errorf("splash vanished too early")
 	}
 	all := strings.Join(lines, "\n")
-	for _, want := range []string{"no connection", "[scratch]", "Messages", "10Quit", "5Run"} {
+	for _, want := range []string{"no connection", "[scratch ", "Messages", "10Quit", "5Run"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("main layout lacks %q", want)
 		}
@@ -241,4 +241,59 @@ func TestModalIsOpaque(t *testing.T) {
 			t.Fatalf("line %d: background shows through the modal's padding: %q", n, string(r[right-10:right+1]))
 		}
 	}
+}
+
+func TestScratchAutosaveCloseReopen(t *testing.T) {
+	state := t.TempDir()
+	a, scr, stop := startApp(t, emptyConfig(), Options{NoSplash: true, StateDir: state, AutosaveDelay: 100 * time.Millisecond})
+	waitFor(t, a, scr, "6RunAll", 2*time.Second)
+	for _, r := range "SELECT 42;" {
+		scr.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+	}
+	waitFor(t, a, scr, "SELECT 42;", 2*time.Second)
+	dir := filepath.Join(state, "scratches")
+	var file string
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && file == "" {
+		m, _ := filepath.Glob(filepath.Join(dir, "*", "scratch_*.sql"))
+		for _, f := range m {
+			if b, _ := os.ReadFile(f); string(b) == "SELECT 42;" {
+				file = f
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if file == "" {
+		t.Fatal("scratch was not saved automatically")
+	}
+	// Alt+X closes (already saved); a fresh empty scratch takes its place.
+	scr.InjectKey(tcell.KeyRune, 'x', tcell.ModAlt)
+	waitFor(t, a, scr, "  1  ", 2*time.Second)
+	// Alt+O lists it; Enter re-opens it.
+	scr.InjectKey(tcell.KeyRune, 'o', tcell.ModAlt)
+	waitFor(t, a, scr, "Scratches (2)", 2*time.Second)
+	// Filter by content (digits could also match the timestamp in a name).
+	for _, r := range "SELECT 4" {
+		scr.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+	}
+	waitFor(t, a, scr, "Scratches (2)", 2*time.Second)
+	scr.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
+	// The dialog is closed and the scratch is the current editor tab.
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		lines := waitFor(t, a, scr, "SELECT 42;", 2*time.Second)
+		if !strings.Contains(strings.Join(lines, "\n"), "Scratches (") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("scratch dialog did not close after Enter")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	stop()
+
+	// Restart: the open scratches come back.
+	a2, scr2, stop2 := startApp(t, emptyConfig(), Options{NoSplash: true, StateDir: state})
+	defer stop2()
+	waitFor(t, a2, scr2, "SELECT 42;", 2*time.Second)
 }

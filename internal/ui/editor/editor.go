@@ -686,3 +686,10 @@ func (e *Editor) CurrentStatement() (sqltext.Statement, bool) {
 	}
 	return e.stmt, e.stmtOK
 }
+
+// markClean records text as the saved state (the buffer may have changed
+// meanwhile; then it stays dirty).
+func (e *Editor) markClean(text string) {
+	e.cleanText = text
+	e.dirtyVer = -1
+}

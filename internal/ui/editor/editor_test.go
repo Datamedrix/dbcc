@@ -1,8 +1,6 @@
 package editor
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -625,63 +623,5 @@ func TestTabs(t *testing.T) {
 	tb.PasteHandler()("p\nq", func(p tview.Primitive) {})
 	if !strings.Contains(a.Editor.Text(), "p\nq") {
 		t.Fatal("paste not forwarded")
-	}
-}
-
-func TestScratchRoundtrip(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "state")
-	tb := NewTabs()
-	tb.AddScratch("", "SELECT 1;\nSELECT 2;")
-	tb.Current().Editor.SetCursor(2, 3)
-	tb.OpenObject("k", "proc", "CREATE …", nil)
-	tb.AddScratch("notes", "-- ä漢\n")
-	tb.SetCurrent(2)
-	if err := tb.SaveScratch(dir); err != nil {
-		t.Fatal(err)
-	}
-	if tb.Tabs()[0].Dirty() {
-		t.Fatal("saved scratch still dirty")
-	}
-	// stale file is removed on the next save
-	if err := os.WriteFile(filepath.Join(dir, "scratch-9.sql"), []byte("old"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := tb.SaveScratch(dir); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "scratch-9.sql")); !os.IsNotExist(err) {
-		t.Fatal("stale scratch file kept")
-	}
-
-	tb2 := NewTabs()
-	tb2.AddScratch("", "") // default empty scratch is replaced
-	if err := tb2.LoadScratch(dir); err != nil {
-		t.Fatal(err)
-	}
-	tabs := tb2.Tabs()
-	if len(tabs) != 2 || tabs[0].Title != "scratch" || tabs[1].Title != "notes" {
-		t.Fatalf("tabs %v", tb2.BarText())
-	}
-	if tabs[0].Editor.Text() != "SELECT 1;\nSELECT 2;" || tabs[1].Editor.Text() != "-- ä漢\n" {
-		t.Fatal("text lost")
-	}
-	if l, c := tabs[0].Editor.Cursor(); l != 2 || c != 3 {
-		t.Fatalf("cursor %d:%d", l, c)
-	}
-	if tb2.Current() != tabs[1] || tabs[0].Dirty() || tabs[0].Kind != KindScratch {
-		t.Fatal("current/dirty/kind")
-	}
-	// missing directory is not an error
-	if err := NewTabs().LoadScratch(filepath.Join(dir, "nope")); err != nil {
-		t.Fatal(err)
-	}
-	// index entries never escape the directory
-	bad := `{"version":1,"current":0,"tabs":[{"file":"../evil.sql","title":"x"}]}`
-	if err := os.WriteFile(filepath.Join(dir, ScratchIndexFile), []byte(bad), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	tb3 := NewTabs()
-	if err := tb3.LoadScratch(dir); err != nil || tb3.Len() != 0 {
-		t.Fatal("bad index entry loaded", err)
 	}
 }

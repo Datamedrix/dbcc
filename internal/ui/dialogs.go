@@ -115,7 +115,7 @@ func (h *host) EditorSet(text string) error {
 			}
 		}
 		if tab == nil {
-			tab = ed.AddScratch("", "")
+			tab = h.a.newScratch()
 		}
 		ed.SetCurrent(ed.Index(tab))
 		tab.Editor.ReplaceAll(text)
@@ -128,8 +128,9 @@ func (h *host) EditorOpen(title, text string, obj *script.ObjectRef) error {
 	h.a.ui(func() {
 		ed := h.a.editors
 		if obj == nil {
-			t := ed.AddScratch(title, text)
-			ed.SetCurrent(ed.Index(t))
+			if t := h.a.newScratch(); t != nil {
+				t.Editor.ReplaceAll(text)
+			}
 		} else {
 			key := string(obj.Kind) + ":" + obj.Path.String() + "/" + obj.Path.Object
 			ed.OpenObject(key, title, text, obj)
