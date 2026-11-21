@@ -25,14 +25,13 @@ func (e *Editor) Bindings() []Binding {
 		{"Ctrl+Home/End, Alt+</Alt+>", "Buffer start / end"},
 		{"Shift+movement", "Extend the selection"},
 		{"Alt+A", "Select all"},
-		{"Alt+W", "Copy the selection"},
+		{"Ctrl+Shift+C", "Copy the selection to the clipboard (also Ctrl+C)"},
+		{"Ctrl+Shift+V", "Paste (the terminal's paste; otherwise the last copied text)"},
 		{"Ctrl+W", "Kill word backward, or cut the selection"},
 		{"Ctrl+K", "Kill to end of line"},
 		{"Ctrl+U", "Kill to line start"},
 		{"Alt+D", "Kill word forward"},
 		{"Alt+Backspace", "Kill word backward"},
-		{"Ctrl+Y", "Yank (paste the last kill)"},
-		{"Alt+Y", "Cycle the yanked text"},
 		{"Ctrl+Z, Ctrl+_", "Undo"},
 		{"Alt+Z", "Redo"},
 		{"Ctrl+D, Delete", "Delete character"},
@@ -173,8 +172,6 @@ func (e *Editor) handle(ev *tcell.EventKey, keepEdit *bool) bool {
 			off := e.offsetOf(e.cur)
 			e.killRange(unixWordBack(e.Text(), off), off, false)
 		}
-	case tcell.KeyCtrlY:
-		e.yank()
 	case tcell.KeyCtrlZ, tcell.KeyCtrlUnderscore:
 		e.Undo()
 	default:
@@ -194,13 +191,6 @@ func (e *Editor) altRune(r rune) bool {
 		e.killRange(off, forwardWord(e.Text(), off), true)
 	case 'a':
 		e.SelectAll()
-	case 'w':
-		if text, _, ok := e.Selection(); ok {
-			e.pushKill(text, false, true)
-			e.selecting = false
-		}
-	case 'y':
-		e.yankPop()
 	case 'z':
 		e.Redo()
 	case 'i':
@@ -484,4 +474,26 @@ func (e *Editor) yankPop() {
 	e.yankTo = e.offsetOf(e.cur)
 	e.endEdit()
 	e.thisCmd = cmdYank
+}
+
+// Copy puts the selection into the copy buffer and calls OnCopy (the
+// application copies it to the system clipboard). Owner request: Ctrl+Shift+C.
+func (e *Editor) Copy() bool {
+	text, _, ok := e.Selection()
+	if !ok {
+		return false
+	}
+	e.pushKill(text, false, true)
+	e.selecting = false
+	return true
+}
+
+// PasteLast inserts the last copied or killed text (Ctrl+Shift+V when the
+// terminal does not paste itself).
+func (e *Editor) PasteLast() bool {
+	if len(e.kills) == 0 {
+		return false
+	}
+	e.yank()
+	return true
 }

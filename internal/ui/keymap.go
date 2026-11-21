@@ -98,6 +98,7 @@ func DefaultKeymap() *Keymap {
 	add(r, "next_page", "n", "", "Next page (page_size rows per page; the previous page is dropped)")
 	add(r, "next_page", "f6", "NextPg", "Next page")
 	add(r, "prev_page", "p", "", "Previous page (re-runs a read query and skips the rows before it)")
+	add(r, "prev_page", "shift+f6", "PrevPg", "Previous page")
 	add(r, "copy_cell", "c", "", "Copy cell")
 	add(r, "copy_row", "C", "", "Copy row")
 	add(r, "prev_result", "[", "", "Previous result tab")
@@ -287,6 +288,11 @@ func FromEvent(ev *tcell.EventKey) Key {
 	}
 	code := ev.Key()
 	mod := ev.Modifiers()
+	// Terminals without modifier encoding (Linux console, some terminfo
+	// entries) send Shift+F1…F12 as F13…F24.
+	if code >= tcell.KeyF13 && code <= tcell.KeyF24 && mod == 0 {
+		code, mod = code-12, tcell.ModShift
+	}
 	// In tcell v2.13 KeyCtrlA…KeyCtrlZ and KeyCtrlSpace are distinct codes
 	// (Ctrl+H/I/M still arrive as Backspace/Tab/Enter); ModCtrl is implied.
 	if code >= tcell.KeyCtrlA && code <= tcell.KeyCtrlZ || code == tcell.KeyCtrlSpace {

@@ -233,6 +233,10 @@ func (a *App) build() {
 	a.editors.SetStyles(editor.DefaultStyles(256))
 	// Restore scratch tabs synchronously so that the first keystrokes have
 	// a tab to go to (local file I/O only).
+	// Copied and cut text goes to the system clipboard (OSC 52, works over SSH).
+	a.editors.Configure = func(e *editor.Editor) {
+		e.OnCopy = func(text string) { a.copyToClipboard(text) }
+	}
 	a.editors.SetScratchDir(filepath.Join(a.opts.StateDir, "scratches"))
 	if err := a.editors.LoadSession(filepath.Join(a.opts.StateDir, "scratch")); err != nil {
 		a.log.Add(exec.Message{Err: fmt.Errorf("restore scratch tabs: %w", err)})
@@ -436,6 +440,9 @@ func (a *App) message(m exec.Message) { (&host{a}).Message(m) }
 func (a *App) globalKeys(ev *tcell.EventKey) *tcell.EventKey {
 	if a.routePopup(ev) {
 		return nil
+	}
+	if out, done := a.clipboardKeys(ev); done {
+		return out
 	}
 	ev = a.fkeys.Translate(ev)
 	if name, _ := a.pages.GetFrontPage(); name != "main" {

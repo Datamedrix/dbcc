@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"unicode"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -241,3 +242,50 @@ func (a *App) routePopup(ev *tcell.EventKey) bool {
 }
 
 var errNoHistory = errors.New("history is not available")
+
+// isCtrlLetter reports Ctrl+<letter> or Ctrl+Shift+<letter>: legacy
+// terminals send both as the control code, CSI-u terminals as a rune with
+// ModCtrl (and ModShift).
+func isCtrlLetter(ev *tcell.EventKey, letter rune) bool {
+	if ev.Key() == tcell.KeyCtrlA+tcell.Key(letter-'a') && ev.Modifiers()&tcell.ModAlt == 0 {
+		return true
+	}
+	return ev.Key() == tcell.KeyRune && ev.Modifiers()&tcell.ModCtrl != 0 && ev.Modifiers()&tcell.ModAlt == 0 &&
+		unicode.ToLower(ev.Rune()) == letter
+}
+
+// clipboardKeys handles Ctrl+Shift+C / Ctrl+Shift+V (owner request) and
+// keeps Ctrl+C from stopping the application (tview's default): in the
+// editor it copies the selection, elsewhere it is ignored. Many terminals
+// handle Ctrl+Shift+C/V themselves (copying the terminal selection,
+// pasting via bracketed paste); when the keys reach dbcc they act on the
+// editor. Returns the event to pass on and whether it was handled.
+func (a *App) clipboardKeys(ev *tcell.EventKey) (*tcell.EventKey, bool) {
+	copyKey, pasteKey := isCtrlLetter(ev, 'c'), isCtrlLetter(ev, 'v')
+	if !copyKey && !pasteKey {
+		return ev, false
+	}
+	if name, _ := a.pages.GetFrontPage(); name != "main" {
+		if copyKey {
+			// never let Ctrl+C stop the application from a dialog
+			return tcell.NewEventKey(tcell.KeyCtrlC, 0, ev.Modifiers()), true
+		}
+		return ev, false
+	}
+	tab := a.editors.Current()
+	if !a.editors.HasFocus() || tab == nil {
+		if copyKey {
+			a.lastErr = "Ctrl+C does not quit dbcc — F10 quits"
+			return nil, true
+		}
+		return ev, false
+	}
+	if copyKey {
+		if !tab.Editor.Copy() {
+			a.lastErr = "nothing selected to copy"
+		}
+		return nil, true
+	}
+	tab.Editor.PasteLast()
+	return nil, true
+}

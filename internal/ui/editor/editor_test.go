@@ -190,7 +190,8 @@ func TestReadlineKills(t *testing.T) {
 	if e.LastKill() != " b from t\n" {
 		t.Fatalf("kill = %q", e.LastKill())
 	}
-	press(t, e, ctrl('e'), ctrl('y'))
+	press(t, e, ctrl('e'))
+	e.PasteLast() // Ctrl+Shift+V without terminal paste
 	expect(t, e, "select a,where x b from t\n", 2, 0)
 
 	e = withText("select foo bar", 1, 14)
@@ -203,12 +204,15 @@ func TestReadlineKills(t *testing.T) {
 	}
 	press(t, e, ctrl('e'), ctrl('u')) // a motion in between starts a new entry
 	expect(t, e, "", 1, 0)
-	press(t, e, ctrl('y'))
+	e.PasteLast() // the last kill
 	expect(t, e, "select ", 1, 7)
-	press(t, e, alt('y')) // yank-pop to the previous entry
-	expect(t, e, "foo bar", 1, 7)
-	press(t, e, alt('y'))
-	expect(t, e, "select ", 1, 7)
+	// Ctrl+Y and Alt+Y were removed (owner request); they are no longer consumed.
+	if e.HandleKey(ctrl('y')) || e.HandleKey(alt('w')) {
+		t.Fatal("removed keys Ctrl+Y / Alt+W still bound")
+	}
+	if e.HandleKey(alt('y')) {
+		t.Fatal("removed key Alt+Y still bound")
+	}
 
 	e = withText("a.b_c d", 1, 0)
 	press(t, e, alt('d'))
@@ -260,7 +264,7 @@ func TestSelection(t *testing.T) {
 	if s, l, _ := e.Selection(); s != "abc\ndef" || l != 1 {
 		t.Fatalf("select all %q", s)
 	}
-	press(t, e, alt('w')) // copy
+	e.Copy() // Ctrl+Shift+C (routed by the application)
 	if e.HasSelection() || e.LastKill() != "abc\ndef" {
 		t.Fatal("copy failed")
 	}

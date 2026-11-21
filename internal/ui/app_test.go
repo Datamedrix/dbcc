@@ -297,3 +297,43 @@ func TestScratchAutosaveCloseReopen(t *testing.T) {
 	defer stop2()
 	waitFor(t, a2, scr2, "SELECT 42;", 2*time.Second)
 }
+
+func TestCtrlCNeverQuitsAndCopies(t *testing.T) {
+	a, scr, stop := startApp(t, emptyConfig(), Options{NoSplash: true})
+	defer stop()
+	waitFor(t, a, scr, "6RunAll", 2*time.Second)
+	for _, r := range "SELECT 7" {
+		scr.InjectKey(tcell.KeyRune, r, tcell.ModNone)
+	}
+	scr.InjectKey(tcell.KeyRune, 'a', tcell.ModAlt) // select all
+	scr.InjectKey(tcell.KeyCtrlC, 0, tcell.ModCtrl) // legacy form of Ctrl+Shift+C
+	time.Sleep(200 * time.Millisecond)
+	clip := make(chan string, 1)
+	a.tv.QueueUpdate(func() { clip <- a.editors.Current().Editor.LastKill() })
+	if got := <-clip; got != "SELECT 7" {
+		t.Fatalf("copy buffer %q", got)
+	}
+	// Ctrl+C in another pane does not stop the application either.
+	scr.InjectKey(tcell.KeyBacktab, 0, tcell.ModNone)
+	scr.InjectKey(tcell.KeyCtrlC, 0, tcell.ModCtrl)
+	waitFor(t, a, scr, "F10 quits", 2*time.Second)
+	// CSI-u form: Ctrl+Shift+V as rune with modifiers pastes into the editor.
+	scr.InjectKey(tcell.KeyRune, 'v', tcell.ModNone) // tree pane: no effect on the editor
+	scr.InjectKey(tcell.KeyF2, 0, tcell.ModAlt)
+	scr.InjectKey(tcell.KeyEnd, 0, tcell.ModCtrl)
+	scr.InjectKey(tcell.KeyRune, 'V', tcell.ModCtrl|tcell.ModShift)
+	waitFor(t, a, scr, "SELECT 7SELECT 7", 2*time.Second)
+}
+
+func TestShiftF6AndF18AreShiftF6(t *testing.T) {
+	k := DefaultKeymap()
+	if a := k.Action(PaneGrid, tcell.NewEventKey(tcell.KeyF6, 0, tcell.ModShift)); a != "prev_page" {
+		t.Errorf("Shift+F6 = %q", a)
+	}
+	if a := k.Action(PaneGrid, tcell.NewEventKey(tcell.KeyF18, 0, tcell.ModNone)); a != "prev_page" {
+		t.Errorf("F18 (legacy Shift+F6) = %q", a)
+	}
+	if a := k.Action(PaneGrid, tcell.NewEventKey(tcell.KeyF6, 0, tcell.ModNone)); a != "next_page" {
+		t.Errorf("F6 = %q", a)
+	}
+}
