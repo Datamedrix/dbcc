@@ -1,0 +1,98 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_dialect",
+    "Schema": "",
+    "Object": "logs"
+  },
+  "Kind": "table",
+  "Columns": [
+    {
+      "Name": "id",
+      "Position": 1,
+      "DataType": "int",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "created",
+      "Position": 2,
+      "DataType": "date",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "msg",
+      "Position": 3,
+      "DataType": "varchar(100)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": {
+    "Name": "PRIMARY",
+    "Columns": [
+      "id",
+      "created"
+    ]
+  },
+  "UniqueKeys": null,
+  "ForeignKeys": null,
+  "Checks": null,
+  "Indexes": [
+    {
+      "Name": "PRIMARY",
+      "Columns": [
+        {
+          "Name": "id",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "created",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "BTREE",
+      "Invisible": false,
+      "Comment": ""
+    }
+  ],
+  "Triggers": null,
+  "Comment": "",
+  "Options": {
+    "charset": "utf8mb4",
+    "collation": "utf8mb4_unicode_ci",
+    "create_options": "partitioned",
+    "engine": "InnoDB",
+    "partitioning": "RANGE (year(`created`)) 3 partitions: p2023, p2024, pmax",
+    "row_format": "Dynamic",
+    "rows": "\u003cmasked\u003e"
+  },
+  "ViewDefinition": ""
+}

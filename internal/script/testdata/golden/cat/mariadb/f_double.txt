@@ -1,0 +1,3 @@
+CREATE DEFINER=<definer> FUNCTION `f_double`(x INT) RETURNS int(11)
+    DETERMINISTIC
+RETURN x * 2

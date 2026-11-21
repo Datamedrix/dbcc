@@ -1,0 +1,110 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_dialect",
+    "Schema": "dbo",
+    "Object": "logs"
+  },
+  "Kind": "table",
+  "Columns": [
+    {
+      "Name": "id",
+      "Position": 1,
+      "DataType": "int",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "msg",
+      "Position": 2,
+      "DataType": "nvarchar(100)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_100_CI_AS",
+      "Comment": ""
+    },
+    {
+      "Name": "valid_from",
+      "Position": 3,
+      "DataType": "datetime2(7)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": {
+        "Expression": "GENERATED ALWAYS AS ROW START",
+        "Stored": true
+      },
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "valid_to",
+      "Position": 4,
+      "DataType": "datetime2(7)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": {
+        "Expression": "GENERATED ALWAYS AS ROW END",
+        "Stored": true
+      },
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": {
+    "Name": "PK_logs",
+    "Columns": [
+      "id"
+    ]
+  },
+  "UniqueKeys": null,
+  "ForeignKeys": null,
+  "Checks": null,
+  "Indexes": [
+    {
+      "Name": "PK_logs",
+      "Columns": [
+        {
+          "Name": "id",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "CLUSTERED",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    }
+  ],
+  "Triggers": null,
+  "Comment": "",
+  "Options": {
+    "filegroup": "PRIMARY",
+    "history_table": "[dbo].[logs_history]",
+    "rows": "\u003cmasked\u003e",
+    "temporal": "SYSTEM_VERSIONED_TEMPORAL_TABLE"
+  },
+  "ViewDefinition": ""
+}

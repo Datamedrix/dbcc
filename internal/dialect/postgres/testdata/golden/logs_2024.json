@@ -1,0 +1,96 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_pg",
+    "Schema": "app",
+    "Object": "logs_2024"
+  },
+  "Kind": "table",
+  "Columns": [
+    {
+      "Name": "id",
+      "Position": 1,
+      "DataType": "bigint",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "created",
+      "Position": 2,
+      "DataType": "date",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "msg",
+      "Position": 3,
+      "DataType": "text",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": {
+    "Name": "logs_2024_pkey",
+    "Columns": [
+      "id",
+      "created"
+    ]
+  },
+  "UniqueKeys": null,
+  "ForeignKeys": null,
+  "Checks": null,
+  "Indexes": [
+    {
+      "Name": "logs_2024_pkey",
+      "Columns": [
+        {
+          "Name": "id",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "created",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "btree",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    }
+  ],
+  "Triggers": null,
+  "Comment": "",
+  "Options": {
+    "access_method": "heap",
+    "owner": "postgres",
+    "partition_of": "app.logs FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')"
+  },
+  "ViewDefinition": ""
+}

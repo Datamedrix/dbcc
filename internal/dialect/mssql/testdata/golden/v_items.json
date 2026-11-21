@@ -1,0 +1,64 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_dialect",
+    "Schema": "sales",
+    "Object": "v_items"
+  },
+  "Kind": "view",
+  "Columns": [
+    {
+      "Name": "id",
+      "Position": 1,
+      "DataType": "int",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": true,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "name",
+      "Position": 2,
+      "DataType": "nvarchar(80)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_100_CI_AS",
+      "Comment": ""
+    },
+    {
+      "Name": "amount",
+      "Position": 3,
+      "DataType": "decimal(16,2)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": null,
+  "UniqueKeys": null,
+  "ForeignKeys": null,
+  "Checks": null,
+  "Indexes": null,
+  "Triggers": null,
+  "Comment": "",
+  "Options": {
+    "check_option": "CASCADED"
+  },
+  "ViewDefinition": "SELECT id, name, price * qty AS amount\nFROM sales.items\nWHERE status \u003c\u003e 'done'\nWITH CHECK OPTION"
+}

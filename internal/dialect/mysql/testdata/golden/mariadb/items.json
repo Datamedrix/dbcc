@@ -1,0 +1,580 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_dialect",
+    "Schema": "",
+    "Object": "items"
+  },
+  "Kind": "table",
+  "Columns": [
+    {
+      "Name": "id",
+      "Position": 1,
+      "DataType": "int(10) unsigned",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": true,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": "surrogate key"
+    },
+    {
+      "Name": "code",
+      "Position": 2,
+      "DataType": "varchar(20)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "region",
+      "Position": 3,
+      "DataType": "char(2)",
+      "Nullable": false,
+      "Default": "EU",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "name",
+      "Position": 4,
+      "DataType": "varchar(200)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_bin",
+      "Comment": ""
+    },
+    {
+      "Name": "note",
+      "Position": 5,
+      "DataType": "varchar(40)",
+      "Nullable": true,
+      "Default": "NULL",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": "string default NULL"
+    },
+    {
+      "Name": "nothing",
+      "Position": 6,
+      "DataType": "varchar(40)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "no_default",
+      "Position": 7,
+      "DataType": "varchar(40)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "empty_str",
+      "Position": 8,
+      "DataType": "varchar(10)",
+      "Nullable": false,
+      "Default": "",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "quote_str",
+      "Position": 9,
+      "DataType": "varchar(10)",
+      "Nullable": false,
+      "Default": "it's",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "price",
+      "Position": 10,
+      "DataType": "decimal(10,2)",
+      "Nullable": false,
+      "Default": "0.00",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "qty",
+      "Position": 11,
+      "DataType": "int(11)",
+      "Nullable": false,
+      "Default": "1",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "ratio",
+      "Position": 12,
+      "DataType": "double",
+      "Nullable": true,
+      "Default": "-1.5",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "total",
+      "Position": 13,
+      "DataType": "decimal(12,2)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": {
+        "Expression": "`price` * `qty`",
+        "Stored": true
+      },
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "name_upper",
+      "Position": 14,
+      "DataType": "varchar(200)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": {
+        "Expression": "ucase(`name`)",
+        "Stored": false
+      },
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "status",
+      "Position": 15,
+      "DataType": "enum('new','active','it''s done')",
+      "Nullable": false,
+      "Default": "new",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": [
+        "new",
+        "active",
+        "it's done"
+      ],
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "tags",
+      "Position": 16,
+      "DataType": "set('a','b','c')",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": [
+        "a",
+        "b",
+        "c"
+      ],
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "uid",
+      "Position": 17,
+      "DataType": "varchar(36)",
+      "Nullable": false,
+      "Default": "uuid()",
+      "DefaultExpr": true,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "created",
+      "Position": 18,
+      "DataType": "datetime",
+      "Nullable": false,
+      "Default": "current_timestamp()",
+      "DefaultExpr": true,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "updated",
+      "Position": 19,
+      "DataType": "timestamp(3)",
+      "Nullable": false,
+      "Default": "current_timestamp(3)",
+      "DefaultExpr": true,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "current_timestamp(3)",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "small",
+      "Position": 20,
+      "DataType": "tinyint(1)",
+      "Nullable": false,
+      "Default": "0",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "data",
+      "Position": 21,
+      "DataType": "blob",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "bin",
+      "Position": 22,
+      "DataType": "varbinary(16)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "doc",
+      "Position": 23,
+      "DataType": "longtext",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_bin",
+      "Comment": ""
+    },
+    {
+      "Name": "parent_a",
+      "Position": 24,
+      "DataType": "int(11)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "parent_b",
+      "Position": 25,
+      "DataType": "varchar(20)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": {
+    "Name": "PRIMARY",
+    "Columns": [
+      "id"
+    ]
+  },
+  "UniqueKeys": [
+    {
+      "Name": "uq_code_region",
+      "Columns": [
+        "code",
+        "region"
+      ]
+    }
+  ],
+  "ForeignKeys": [
+    {
+      "Name": "fk_items_parent",
+      "Columns": [
+        "parent_a",
+        "parent_b"
+      ],
+      "RefTable": {
+        "Conn": "",
+        "Database": "dbcc_it_dialect",
+        "Schema": "",
+        "Object": "parent"
+      },
+      "RefColumns": [
+        "a",
+        "b"
+      ],
+      "OnUpdate": "RESTRICT",
+      "OnDelete": "CASCADE"
+    }
+  ],
+  "Checks": [
+    {
+      "Name": "chk_code",
+      "Expression": "`code` \u003c\u003e ''",
+      "NotEnforced": false
+    },
+    {
+      "Name": "chk_price",
+      "Expression": "`price` \u003e= 0",
+      "NotEnforced": false
+    },
+    {
+      "Name": "doc",
+      "Expression": "json_valid(`doc`)",
+      "NotEnforced": false
+    },
+    {
+      "Name": "qty",
+      "Expression": "`qty` \u003c 100000",
+      "NotEnforced": false
+    }
+  ],
+  "Indexes": [
+    {
+      "Name": "PRIMARY",
+      "Columns": [
+        {
+          "Name": "id",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "BTREE",
+      "Invisible": false,
+      "Comment": ""
+    },
+    {
+      "Name": "ft_name",
+      "Columns": [
+        {
+          "Name": "name",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "FULLTEXT",
+      "Invisible": false,
+      "Comment": ""
+    },
+    {
+      "Name": "ix_name_prefix",
+      "Columns": [
+        {
+          "Name": "name",
+          "Descending": false,
+          "SubPart": 10,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "BTREE",
+      "Invisible": false,
+      "Comment": ""
+    },
+    {
+      "Name": "ix_parent",
+      "Columns": [
+        {
+          "Name": "parent_a",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "parent_b",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "BTREE",
+      "Invisible": false,
+      "Comment": ""
+    },
+    {
+      "Name": "ix_price_desc",
+      "Columns": [
+        {
+          "Name": "price",
+          "Descending": true,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "qty",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "BTREE",
+      "Invisible": false,
+      "Comment": ""
+    },
+    {
+      "Name": "ix_total",
+      "Columns": [
+        {
+          "Name": "total",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "BTREE",
+      "Invisible": false,
+      "Comment": ""
+    },
+    {
+      "Name": "uq_code_region",
+      "Columns": [
+        {
+          "Name": "code",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "region",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "BTREE",
+      "Invisible": false,
+      "Comment": ""
+    }
+  ],
+  "Triggers": [
+    {
+      "Name": "trg_items_bi",
+      "Timing": "BEFORE",
+      "Event": "INSERT"
+    },
+    {
+      "Name": "trg_items_au",
+      "Timing": "AFTER",
+      "Event": "UPDATE"
+    }
+  ],
+  "Comment": "items with everything",
+  "Options": {
+    "auto_increment": "\u003cmasked\u003e",
+    "charset": "utf8mb4",
+    "collation": "utf8mb4_unicode_ci",
+    "engine": "InnoDB",
+    "row_format": "Dynamic",
+    "rows": "\u003cmasked\u003e"
+  },
+  "ViewDefinition": ""
+}

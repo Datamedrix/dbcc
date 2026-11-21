@@ -1,0 +1,70 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_pg",
+    "Schema": "app",
+    "Object": "mv_totals"
+  },
+  "Kind": "materialized view",
+  "Columns": [
+    {
+      "Name": "code",
+      "Position": 1,
+      "DataType": "character varying(20)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "total",
+      "Position": 2,
+      "DataType": "numeric",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": null,
+  "UniqueKeys": null,
+  "ForeignKeys": null,
+  "Checks": null,
+  "Indexes": [
+    {
+      "Name": "ix_mv_totals_code",
+      "Columns": [
+        {
+          "Name": "code",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "btree",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    }
+  ],
+  "Triggers": null,
+  "Comment": "totals",
+  "Options": {
+    "access_method": "heap",
+    "owner": "postgres",
+    "populated": "no"
+  },
+  "ViewDefinition": "SELECT code,\n    sum(total) AS total\n   FROM app.items\n  GROUP BY code"
+}

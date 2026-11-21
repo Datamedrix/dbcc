@@ -1,0 +1,77 @@
+table `dbcc_it_cat`.`items` -- items with everything
+
+Columns
+#  | Field      | Type                              | Null | Key | Default              | Extra                                        | Comment
+---+------------+-----------------------------------+------+-----+----------------------+----------------------------------------------+--------------------
+ 1 | id         | int(10) unsigned                  | NO   | PRI |                      | auto_increment                               | surrogate key
+ 2 | code       | varchar(20)                       | NO   | MUL |                      |                                              |
+ 3 | region     | char(2)                           | NO   |     | 'EU'                 |                                              |
+ 4 | name       | varchar(200)                      | NO   | MUL |                      | COLLATE utf8mb4_bin                          |
+ 5 | note       | varchar(40)                       | YES  |     | 'NULL'               |                                              | string default NULL
+ 6 | nothing    | varchar(40)                       | YES  |     | NULL                 |                                              |
+ 7 | no_default | varchar(40)                       | NO   |     |                      |                                              |
+ 8 | empty_str  | varchar(10)                       | NO   |     | ''                   |                                              |
+ 9 | quote_str  | varchar(10)                       | NO   |     | 'it''s'              |                                              |
+10 | price      | decimal(10,2)                     | NO   | MUL | 0.00                 |                                              |
+11 | qty        | int(11)                           | NO   |     | 1                    |                                              |
+12 | ratio      | double                            | YES  |     | -1.5                 |                                              |
+13 | total      | decimal(12,2)                     | YES  | MUL |                      | GENERATED ALWAYS AS (`price` * `qty`) STORED |
+14 | name_upper | varchar(200)                      | YES  |     |                      | GENERATED ALWAYS AS (ucase(`name`)) VIRTUAL  |
+15 | status     | enum('new','active','it''s done') | NO   |     | 'new'                |                                              |
+16 | tags       | set('a','b','c')                  | YES  |     | NULL                 |                                              |
+17 | uid        | varchar(36)                       | NO   |     | uuid()               |                                              |
+18 | created    | datetime                          | NO   |     | current_timestamp()  |                                              |
+19 | updated    | timestamp(3)                      | NO   |     | current_timestamp(3) | on update current_timestamp(3)               |
+20 | small      | tinyint(1)                        | NO   |     | 0                    |                                              |
+21 | data       | blob                              | YES  |     | NULL                 |                                              |
+22 | bin        | varbinary(16)                     | YES  |     | NULL                 |                                              |
+23 | doc        | longtext                          | YES  |     | NULL                 | COLLATE utf8mb4_bin                          |
+24 | parent_a   | int(11)                           | YES  | MUL | NULL                 |                                              |
+25 | parent_b   | varchar(20)                       | YES  |     | NULL                 |                                              |
+
+Primary and unique keys
+Key         | Name           | Columns
+------------+----------------+-------------
+PRIMARY KEY | PRIMARY        | id
+UNIQUE      | uq_code_region | code, region
+
+Foreign keys
+Name            | Columns            | References                    | On update | On delete
+----------------+--------------------+-------------------------------+-----------+----------
+fk_items_parent | parent_a, parent_b | `dbcc_it_cat`.`parent` (a, b) | RESTRICT  | CASCADE
+
+Check constraints
+Name      | Expression        | Enforced
+----------+-------------------+---------
+chk_code  | `code` <> ''      | YES
+chk_price | `price` >= 0      | YES
+doc       | json_valid(`doc`) | YES
+qty       | `qty` < 100000    | YES
+
+Indexes
+Name           | Columns            | Unique | Type     | Visible | Comment
+---------------+--------------------+--------+----------+---------+--------
+PRIMARY        | id                 | YES    | BTREE    | YES     |
+ft_name        | name               | NO     | FULLTEXT | YES     |
+ix_name_prefix | name(10)           | NO     | BTREE    | YES     |
+ix_parent      | parent_a, parent_b | NO     | BTREE    | YES     |
+ix_price_desc  | price DESC, qty    | NO     | BTREE    | YES     |
+ix_total       | total              | NO     | BTREE    | YES     |
+uq_code_region | code, region       | YES    | BTREE    | YES     |
+
+Triggers
+Name         | Timing | Event
+-------------+--------+-------
+trg_items_bi | BEFORE | INSERT
+trg_items_au | AFTER  | UPDATE
+
+Table options
+Option          | Value
+----------------+----------------------
+engine          | InnoDB
+charset         | utf8mb4
+collation       | utf8mb4_unicode_ci
+rows (estimate) | <masked>
+auto_increment  | <masked>
+row_format      | Dynamic
+comment         | items with everything

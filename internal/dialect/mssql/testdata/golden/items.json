@@ -1,0 +1,499 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_dialect",
+    "Schema": "sales",
+    "Object": "items"
+  },
+  "Kind": "table",
+  "Columns": [
+    {
+      "Name": "id",
+      "Position": 1,
+      "DataType": "int",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": true,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "code",
+      "Position": 2,
+      "DataType": "[dbo].[code_t]",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_100_CI_AS",
+      "Comment": ""
+    },
+    {
+      "Name": "name",
+      "Position": 3,
+      "DataType": "nvarchar(80)",
+      "Nullable": false,
+      "Default": "unnamed",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_100_CI_AS",
+      "Comment": "display name"
+    },
+    {
+      "Name": "note",
+      "Position": 4,
+      "DataType": "nvarchar(max)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_100_CI_AS",
+      "Comment": ""
+    },
+    {
+      "Name": "no_default",
+      "Position": 5,
+      "DataType": "varchar(10)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_100_CI_AS",
+      "Comment": ""
+    },
+    {
+      "Name": "price",
+      "Position": 6,
+      "DataType": "decimal(10,2)",
+      "Nullable": false,
+      "Default": "0",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "qty",
+      "Position": 7,
+      "DataType": "smallint",
+      "Nullable": false,
+      "Default": "1",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "total",
+      "Position": 8,
+      "DataType": "decimal(16,2)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": {
+        "Expression": "([price]*[qty])",
+        "Stored": true
+      },
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "label",
+      "Position": 9,
+      "DataType": "nvarchar(80)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": {
+        "Expression": "(upper([name]))",
+        "Stored": false
+      },
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_100_CI_AS",
+      "Comment": ""
+    },
+    {
+      "Name": "created",
+      "Position": 10,
+      "DataType": "datetime2(3)",
+      "Nullable": false,
+      "Default": "sysutcdatetime()",
+      "DefaultExpr": true,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "rate",
+      "Position": 11,
+      "DataType": "float",
+      "Nullable": true,
+      "Default": "-1.5",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "small",
+      "Position": 12,
+      "DataType": "real",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "tiny",
+      "Position": 13,
+      "DataType": "tinyint",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "flag",
+      "Position": 14,
+      "DataType": "bit",
+      "Nullable": false,
+      "Default": "0",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "guid",
+      "Position": 15,
+      "DataType": "uniqueidentifier",
+      "Nullable": true,
+      "Default": "newid()",
+      "DefaultExpr": true,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "bin",
+      "Position": 16,
+      "DataType": "varbinary(16)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "ver",
+      "Position": 17,
+      "DataType": "timestamp",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "parent_a",
+      "Position": 18,
+      "DataType": "int",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "parent_b",
+      "Position": 19,
+      "DataType": "nvarchar(20)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_CI_AS",
+      "Comment": ""
+    },
+    {
+      "Name": "order_no",
+      "Position": 20,
+      "DataType": "bigint",
+      "Nullable": true,
+      "Default": "NEXT VALUE FOR [sales].[order_no]",
+      "DefaultExpr": true,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "status",
+      "Position": 21,
+      "DataType": "varchar(10)",
+      "Nullable": false,
+      "Default": "new",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_100_CI_AS",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": {
+    "Name": "PK_items",
+    "Columns": [
+      "id"
+    ]
+  },
+  "UniqueKeys": [
+    {
+      "Name": "UQ_items_code",
+      "Columns": [
+        "code"
+      ]
+    },
+    {
+      "Name": "UX_items_name",
+      "Columns": [
+        "name",
+        "status"
+      ]
+    }
+  ],
+  "ForeignKeys": [
+    {
+      "Name": "FK_items_parent",
+      "Columns": [
+        "parent_a",
+        "parent_b"
+      ],
+      "RefTable": {
+        "Conn": "",
+        "Database": "dbcc_it_dialect",
+        "Schema": "dbo",
+        "Object": "parent"
+      },
+      "RefColumns": [
+        "a",
+        "b"
+      ],
+      "OnUpdate": "NO ACTION",
+      "OnDelete": "CASCADE"
+    }
+  ],
+  "Checks": [
+    {
+      "Name": "CK_items_price_qty",
+      "Expression": "([price]\u003e=(0) AND [qty]\u003c(1000))",
+      "NotEnforced": true
+    },
+    {
+      "Name": "CK_items_qty",
+      "Expression": "([qty]\u003e=(0))",
+      "NotEnforced": false
+    },
+    {
+      "Name": "CK_items_status",
+      "Expression": "([status]='done' OR [status]='active' OR [status]='new')",
+      "NotEnforced": false
+    }
+  ],
+  "Indexes": [
+    {
+      "Name": "PK_items",
+      "Columns": [
+        {
+          "Name": "id",
+          "Descending": true,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "NONCLUSTERED",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    },
+    {
+      "Name": "CIX_items_created",
+      "Columns": [
+        {
+          "Name": "created",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "CLUSTERED",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    },
+    {
+      "Name": "IX_items_price",
+      "Columns": [
+        {
+          "Name": "price",
+          "Descending": true,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "NONCLUSTERED",
+      "Invisible": false,
+      "Comment": "",
+      "Include": [
+        "name",
+        "qty"
+      ],
+      "Filter": "([qty]\u003e(0))"
+    },
+    {
+      "Name": "UQ_items_code",
+      "Columns": [
+        {
+          "Name": "code",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "NONCLUSTERED",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    },
+    {
+      "Name": "UX_items_guid",
+      "Columns": [
+        {
+          "Name": "guid",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "NONCLUSTERED",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": "([guid] IS NOT NULL)"
+    },
+    {
+      "Name": "UX_items_name",
+      "Columns": [
+        {
+          "Name": "name",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "status",
+          "Descending": true,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "NONCLUSTERED",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    }
+  ],
+  "Triggers": [
+    {
+      "Name": "trg_items_ins",
+      "Timing": "AFTER",
+      "Event": "INSERT, UPDATE"
+    }
+  ],
+  "Comment": "Items for sale",
+  "Options": {
+    "filegroup": "PRIMARY",
+    "identity": "IDENTITY(100,5)",
+    "index IX_items_price fillfactor": "80",
+    "index UQ_items_code constraint": "UNIQUE",
+    "rows": "\u003cmasked\u003e"
+  },
+  "ViewDefinition": ""
+}

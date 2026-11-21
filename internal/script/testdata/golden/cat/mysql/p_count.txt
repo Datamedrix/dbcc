@@ -1,0 +1,6 @@
+CREATE DEFINER=<definer> PROCEDURE `p_count`(IN p_region CHAR(2), OUT n INT)
+    COMMENT 'count items of a region'
+BEGIN
+  SET @dbcc_marker = '$$';
+  SELECT COUNT(*) INTO n FROM items WHERE region = p_region;
+END

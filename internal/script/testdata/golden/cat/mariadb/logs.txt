@@ -1,0 +1,39 @@
+table `dbcc_it_cat`.`logs`
+
+Columns
+# | Field   | Type         | Null | Key | Default | Extra | Comment
+--+---------+--------------+------+-----+---------+-------+--------
+1 | id      | int(11)      | NO   | PRI |         |       |
+2 | created | date         | NO   | PRI |         |       |
+3 | msg     | varchar(100) | YES  |     | NULL    |       |
+
+Primary and unique keys
+Key         | Name    | Columns
+------------+---------+------------
+PRIMARY KEY | PRIMARY | id, created
+
+Foreign keys
+(none)
+
+Check constraints
+(none)
+
+Indexes
+Name    | Columns     | Unique | Type  | Visible | Comment
+--------+-------------+--------+-------+---------+--------
+PRIMARY | id, created | YES    | BTREE | YES     |
+
+Triggers
+(none)
+
+Table options
+Option          | Value
+----------------+---------------------------------------------------------
+engine          | InnoDB
+charset         | utf8mb4
+collation       | utf8mb4_unicode_ci
+rows (estimate) | <masked>
+row_format      | Dynamic
+create_options  | partitioned
+partitioning    | RANGE (year(`created`)) 3 partitions: p2023, p2024, pmax
+comment         |

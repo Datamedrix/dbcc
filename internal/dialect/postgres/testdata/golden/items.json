@@ -1,0 +1,548 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_pg",
+    "Schema": "app",
+    "Object": "items"
+  },
+  "Kind": "table",
+  "Columns": [
+    {
+      "Name": "id",
+      "Position": 1,
+      "DataType": "bigint",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": true,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": "surrogate key"
+    },
+    {
+      "Name": "seq_no",
+      "Position": 2,
+      "DataType": "integer",
+      "Nullable": false,
+      "Default": "nextval('app.items_seq_no_seq'::regclass)",
+      "DefaultExpr": true,
+      "AutoIncrement": true,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "code",
+      "Position": 3,
+      "DataType": "character varying(20)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "region",
+      "Position": 4,
+      "DataType": "character(2)",
+      "Nullable": false,
+      "Default": "EU",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "name",
+      "Position": 5,
+      "DataType": "text",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "C",
+      "Comment": ""
+    },
+    {
+      "Name": "note",
+      "Position": 6,
+      "DataType": "character varying(40)",
+      "Nullable": true,
+      "Default": "NULL",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "nothing",
+      "Position": 7,
+      "DataType": "character varying(40)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "quote_str",
+      "Position": 8,
+      "DataType": "character varying(10)",
+      "Nullable": false,
+      "Default": "it's",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "price",
+      "Position": 9,
+      "DataType": "numeric(10,2)",
+      "Nullable": false,
+      "Default": "0.00",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "qty",
+      "Position": 10,
+      "DataType": "integer",
+      "Nullable": false,
+      "Default": "1",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "ratio",
+      "Position": 11,
+      "DataType": "double precision",
+      "Nullable": true,
+      "Default": "-1.5",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "total",
+      "Position": 12,
+      "DataType": "numeric(12,2)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": {
+        "Expression": "(price * (qty)::numeric)",
+        "Stored": true
+      },
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "status",
+      "Position": 13,
+      "DataType": "app.status",
+      "Nullable": false,
+      "Default": "new",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": [
+        "new",
+        "active",
+        "it's done"
+      ],
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "tags",
+      "Position": 14,
+      "DataType": "text[]",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "doc",
+      "Position": 15,
+      "DataType": "jsonb",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "bin",
+      "Position": 16,
+      "DataType": "bytea",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "uid",
+      "Position": 17,
+      "DataType": "uuid",
+      "Nullable": false,
+      "Default": "gen_random_uuid()",
+      "DefaultExpr": true,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "ticket",
+      "Position": 18,
+      "DataType": "integer",
+      "Nullable": true,
+      "Default": "nextval('app.ticket_seq'::regclass)",
+      "DefaultExpr": true,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "created",
+      "Position": 19,
+      "DataType": "timestamp with time zone",
+      "Nullable": false,
+      "Default": "now()",
+      "DefaultExpr": true,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "day",
+      "Position": 20,
+      "DataType": "date",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "small",
+      "Position": 21,
+      "DataType": "smallint",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "parent_a",
+      "Position": 22,
+      "DataType": "integer",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "parent_b",
+      "Position": 23,
+      "DataType": "character varying(20)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": {
+    "Name": "items_pkey",
+    "Columns": [
+      "id"
+    ]
+  },
+  "UniqueKeys": [
+    {
+      "Name": "uq_code_region",
+      "Columns": [
+        "code",
+        "region"
+      ]
+    },
+    {
+      "Name": "uq_items_uid",
+      "Columns": [
+        "uid"
+      ]
+    }
+  ],
+  "ForeignKeys": [
+    {
+      "Name": "fk_parent",
+      "Columns": [
+        "parent_a",
+        "parent_b"
+      ],
+      "RefTable": {
+        "Conn": "",
+        "Database": "dbcc_it_pg",
+        "Schema": "app",
+        "Object": "parent"
+      },
+      "RefColumns": [
+        "a",
+        "b"
+      ],
+      "OnUpdate": "RESTRICT",
+      "OnDelete": "CASCADE"
+    }
+  ],
+  "Checks": [
+    {
+      "Name": "chk_code",
+      "Expression": "code::text \u003c\u003e ''::text AND code::text !~ ';'::text",
+      "NotEnforced": false
+    },
+    {
+      "Name": "chk_qty",
+      "Expression": "qty \u003e 0 AND qty \u003c 100000",
+      "NotEnforced": false
+    }
+  ],
+  "Indexes": [
+    {
+      "Name": "items_pkey",
+      "Columns": [
+        {
+          "Name": "id",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "btree",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    },
+    {
+      "Name": "ix_items_active",
+      "Columns": [
+        {
+          "Name": "code varchar_pattern_ops",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "btree",
+      "Invisible": false,
+      "Comment": "",
+      "Include": [
+        "qty"
+      ],
+      "Filter": "status = 'active'::app.status"
+    },
+    {
+      "Name": "ix_items_doc",
+      "Columns": [
+        {
+          "Name": "doc jsonb_path_ops",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "gin",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    },
+    {
+      "Name": "ix_items_lower_name",
+      "Columns": [
+        {
+          "Name": "lower(name)",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": true
+        }
+      ],
+      "Unique": false,
+      "Type": "btree",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    },
+    {
+      "Name": "ix_items_price_desc",
+      "Columns": [
+        {
+          "Name": "price NULLS LAST",
+          "Descending": true,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "qty",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": false,
+      "Type": "btree",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    },
+    {
+      "Name": "uq_code_region",
+      "Columns": [
+        {
+          "Name": "code",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "region",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "btree",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    },
+    {
+      "Name": "uq_items_uid",
+      "Columns": [
+        {
+          "Name": "uid",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "btree",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    }
+  ],
+  "Triggers": [
+    {
+      "Name": "trg_items_bi",
+      "Timing": "BEFORE",
+      "Event": "INSERT OR UPDATE OF note FOR EACH ROW WHEN (new.qty \u003e 0)"
+    },
+    {
+      "Name": "trg_items_trunc",
+      "Timing": "AFTER",
+      "Event": "TRUNCATE FOR EACH STATEMENT (disabled)"
+    }
+  ],
+  "Comment": "items with everything",
+  "Options": {
+    "access_method": "heap",
+    "identity.id": "ALWAYS",
+    "owner": "postgres"
+  },
+  "ViewDefinition": ""
+}

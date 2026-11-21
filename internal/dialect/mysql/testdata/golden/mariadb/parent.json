@@ -1,0 +1,96 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_dialect",
+    "Schema": "",
+    "Object": "parent"
+  },
+  "Kind": "table",
+  "Columns": [
+    {
+      "Name": "a",
+      "Position": 1,
+      "DataType": "int(11)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "b",
+      "Position": 2,
+      "DataType": "varchar(20)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "label",
+      "Position": 3,
+      "DataType": "varchar(40)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": "free text"
+    }
+  ],
+  "PrimaryKey": {
+    "Name": "PRIMARY",
+    "Columns": [
+      "a",
+      "b"
+    ]
+  },
+  "UniqueKeys": null,
+  "ForeignKeys": null,
+  "Checks": null,
+  "Indexes": [
+    {
+      "Name": "PRIMARY",
+      "Columns": [
+        {
+          "Name": "a",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "b",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "BTREE",
+      "Invisible": false,
+      "Comment": ""
+    }
+  ],
+  "Triggers": null,
+  "Comment": "parent of items",
+  "Options": {
+    "charset": "utf8mb4",
+    "collation": "utf8mb4_unicode_ci",
+    "engine": "InnoDB",
+    "row_format": "Dynamic",
+    "rows": "\u003cmasked\u003e"
+  },
+  "ViewDefinition": ""
+}

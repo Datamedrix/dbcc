@@ -1,0 +1,68 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_dialect",
+    "Schema": "",
+    "Object": "v_items"
+  },
+  "Kind": "view",
+  "Columns": [
+    {
+      "Name": "id",
+      "Position": 1,
+      "DataType": "int(10) unsigned",
+      "Nullable": false,
+      "Default": "0",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": "surrogate key"
+    },
+    {
+      "Name": "code",
+      "Position": 2,
+      "DataType": "varchar(20)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "utf8mb4_unicode_ci",
+      "Comment": ""
+    },
+    {
+      "Name": "amount",
+      "Position": 3,
+      "DataType": "decimal(20,2)",
+      "Nullable": false,
+      "Default": "0.00",
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": null,
+  "UniqueKeys": null,
+  "ForeignKeys": null,
+  "Checks": null,
+  "Indexes": null,
+  "Triggers": null,
+  "Comment": "",
+  "Options": {
+    "algorithm": "UNDEFINED",
+    "check_option": "NONE",
+    "definer": "root@%",
+    "security_type": "DEFINER",
+    "updatable": "YES"
+  },
+  "ViewDefinition": "select `dbcc_it_dialect`.`items`.`id` AS `id`,`dbcc_it_dialect`.`items`.`code` AS `code`,`dbcc_it_dialect`.`items`.`price` * `dbcc_it_dialect`.`items`.`qty` AS `amount` from `dbcc_it_dialect`.`items` where `dbcc_it_dialect`.`items`.`status` \u003c\u003e 'new'"
+}

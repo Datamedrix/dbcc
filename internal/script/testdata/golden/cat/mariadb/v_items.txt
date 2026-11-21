@@ -1,0 +1,1 @@
+CREATE ALGORITHM=UNDEFINED DEFINER=<definer> SQL SECURITY DEFINER VIEW `dbcc_it_cat`.`v_items` AS select `dbcc_it_cat`.`items`.`id` AS `id`,`dbcc_it_cat`.`items`.`code` AS `code`,`dbcc_it_cat`.`items`.`price` * `dbcc_it_cat`.`items`.`qty` AS `amount` from `dbcc_it_cat`.`items` where `dbcc_it_cat`.`items`.`status` <> 'new'

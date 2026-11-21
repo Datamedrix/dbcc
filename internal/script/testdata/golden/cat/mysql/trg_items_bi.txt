@@ -1,0 +1,5 @@
+CREATE DEFINER=<definer> TRIGGER `trg_items_bi` BEFORE INSERT ON `items` FOR EACH ROW BEGIN
+  IF NEW.code = '-' THEN
+    SET NEW.code = 'X';
+  END IF;
+END

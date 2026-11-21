@@ -1,0 +1,37 @@
+table `dbcc_it_cat`.`parent` -- parent of items
+
+Columns
+# | Field | Type        | Null | Key | Default | Extra | Comment
+--+-------+-------------+------+-----+---------+-------+----------
+1 | a     | int         | NO   | PRI |         |       |
+2 | b     | varchar(20) | NO   | PRI |         |       |
+3 | label | varchar(40) | YES  |     | NULL    |       | free text
+
+Primary and unique keys
+Key         | Name    | Columns
+------------+---------+--------
+PRIMARY KEY | PRIMARY | a, b
+
+Foreign keys
+(none)
+
+Check constraints
+(none)
+
+Indexes
+Name    | Columns | Unique | Type  | Visible | Comment
+--------+---------+--------+-------+---------+--------
+PRIMARY | a, b    | YES    | BTREE | YES     |
+
+Triggers
+(none)
+
+Table options
+Option          | Value
+----------------+-------------------
+engine          | InnoDB
+charset         | utf8mb4
+collation       | utf8mb4_unicode_ci
+rows (estimate) | <masked>
+row_format      | Dynamic
+comment         | parent of items

@@ -1,0 +1,95 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_dialect",
+    "Schema": "dbo",
+    "Object": "parent"
+  },
+  "Kind": "table",
+  "Columns": [
+    {
+      "Name": "a",
+      "Position": 1,
+      "DataType": "int",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "b",
+      "Position": 2,
+      "DataType": "nvarchar(20)",
+      "Nullable": false,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_CI_AS",
+      "Comment": ""
+    },
+    {
+      "Name": "label",
+      "Position": 3,
+      "DataType": "nvarchar(40)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "Latin1_General_100_CI_AS",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": {
+    "Name": "PK_parent",
+    "Columns": [
+      "a",
+      "b"
+    ]
+  },
+  "UniqueKeys": null,
+  "ForeignKeys": null,
+  "Checks": null,
+  "Indexes": [
+    {
+      "Name": "PK_parent",
+      "Columns": [
+        {
+          "Name": "a",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        },
+        {
+          "Name": "b",
+          "Descending": false,
+          "SubPart": 0,
+          "Expression": false
+        }
+      ],
+      "Unique": true,
+      "Type": "CLUSTERED",
+      "Invisible": false,
+      "Comment": "",
+      "Include": null,
+      "Filter": ""
+    }
+  ],
+  "Triggers": null,
+  "Comment": "",
+  "Options": {
+    "filegroup": "PRIMARY",
+    "rows": "\u003cmasked\u003e"
+  },
+  "ViewDefinition": ""
+}

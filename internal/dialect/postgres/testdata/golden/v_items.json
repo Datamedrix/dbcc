@@ -1,0 +1,65 @@
+{
+  "Path": {
+    "Conn": "",
+    "Database": "dbcc_it_pg",
+    "Schema": "app",
+    "Object": "v_items"
+  },
+  "Kind": "view",
+  "Columns": [
+    {
+      "Name": "id",
+      "Position": 1,
+      "DataType": "bigint",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "code",
+      "Position": 2,
+      "DataType": "character varying(20)",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    },
+    {
+      "Name": "label",
+      "Position": 3,
+      "DataType": "text",
+      "Nullable": true,
+      "Default": null,
+      "DefaultExpr": false,
+      "AutoIncrement": false,
+      "Generated": null,
+      "OnUpdate": "",
+      "EnumValues": null,
+      "Collation": "",
+      "Comment": ""
+    }
+  ],
+  "PrimaryKey": null,
+  "UniqueKeys": null,
+  "ForeignKeys": null,
+  "Checks": null,
+  "Indexes": null,
+  "Triggers": null,
+  "Comment": "items with labels",
+  "Options": {
+    "options": "security_barrier=true",
+    "owner": "postgres"
+  },
+  "ViewDefinition": "SELECT i.id,\n    i.code,\n    p.label\n   FROM app.items i\n     LEFT JOIN app.parent p ON p.a = i.parent_a AND p.b::text = i.parent_b::text\n  WHERE i.qty \u003e 0"
+}
