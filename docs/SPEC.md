@@ -299,7 +299,7 @@ Cache metadata per schema, loaded lazily on first use. Invalidate after any stat
 - Each open profile has one **main session**: a pinned `*sql.Conn`, never the pool. Session state (current database, transaction, variables, temporary tables) lives there. All user statements run on it.
 - Each open profile has one **auxiliary connection** for metadata queries and for cancelling the main session. The tree and completion keep working while the main session is busy. Consequence: DDL that is not yet committed in the main session (possible on PostgreSQL and MSSQL) is not visible in tree and completion until commit.
 - Several profiles can be open at once; `cd /other-connection/db` switches between them.
-- **Open-cursor rule:** a lazily loaded result holds the main session. Issuing any new statement first closes that cursor; its tab keeps the rows loaded so far and is marked *partial*. In a script run, every result except the last is buffered up to `max_rows_buffered`.
+- **Open-cursor rule:** a lazily loaded result holds the main session. Issuing any new statement first closes that cursor; its tab keeps the rows loaded so far (its current page, section 10.2) and is marked *partial*. Paging on such a tab re-runs the statement and skips to the page. In a script run, every result except the last is buffered up to `max_rows_buffered`.
 - Cancel: MySQL and MariaDB use `KILL QUERY <id>` on the auxiliary connection; PostgreSQL and MSSQL use the driver's cancellation.
 
 ## 7. Screen layout
@@ -323,7 +323,7 @@ Cache metadata per schema, loaded lazily on first use. Invalidate after any stat
 
 - Panes: object tree on the left (section 7.2); editor with tabs and result area with tabs on the right; command line below. Tab and Shift+Tab cycle the focus.
 - The footer shows the F-key labels **for the focused pane**; it changes with focus.
-- The status line shows profile, transaction state, row count (with `+` while more can be loaded, `partial` or `capped` where applicable), duration, and active sort and filter.
+- The status line shows profile, transaction state, row count (with `+` while more can be loaded, `partial` or `capped` where applicable; paged results show the page, e.g. `rows 3,001–6,000 · page 2 +`, section 10.2), duration, and active sort and filter.
 - In manual-transaction profiles the status line shows `TXN OPEN` after the first statement and flags statements that commit implicitly (MySQL and MariaDB DDL).
 - Read-only profiles show `READ ONLY` permanently.
 
@@ -531,10 +531,14 @@ The splitter returns statements with their starting line number. The same splitt
 - NULL is rendered distinctly (dim `NULL`), binary values as `<BLOB n bytes>`. Numbers are right-aligned.
 - A key copies the current cell, another the current row, through OSC 52.
 
-### 10.2 Lazy loading
+### 10.2 Lazy loading and pages
 
-- Fetch in chunks (`fetch_size`, default 500) when the cursor approaches the end of the loaded rows.
-- Stop at `max_rows` (default 100,000) and show `capped`.
+- A result tab holds at most **one page** of `page_size` rows (default 3,000, at least 10; A24). Within the page, rows are fetched in chunks (`fetch_size`, default 500) when the cursor approaches the end of the loaded rows.
+- When the page is full the cursor stays open (the result is not capped). `n` or F6 shows the next page: the rows of the current page are dropped (their memory is released) and the next page is read from the open cursor. On the last page the status line says `last page`.
+- `p` shows the previous page. A cursor cannot read backwards: the statement is re-run from the start with the same arguments, the rows before the page are read and discarded (status hint `skipping 6,000 rows…`, F8 cancels), then the page is loaded. This is done only for statements the dialect classifies as read queries; otherwise: `previous pages are not available: the statement is not a read query`.
+- The same re-run and skip happens when moving forward after the cursor was closed by the open-cursor rule (section 6.3).
+- The status line shows the rows of the page, the page number and `+` while a next page may exist, e.g. `rows 3,001–6,000 · page 2 +`, plus `partial` after the cursor was closed. A complete result of one page reads `42 rows`.
+- `max_rows` no longer applies to the grid; headless output streams every row as before.
 - The open-cursor rule of section 6.3 applies.
 
 ### 10.3 Result origin
@@ -550,8 +554,8 @@ Table-origin results enable server-side sort and filter, the free `WHERE` filter
 
 - A key cycles the current column through ascending, descending, off. A second key adds the current column as a further sort key.
 - The header shows direction and rank.
-- Table-origin: the grid re-runs `SELECT * FROM obj [WHERE …] ORDER BY …` and restarts lazy loading.
-- Free: sort the loaded rows locally, type-aware, NULLs first. The status line shows `sorted within N loaded rows`. An action "load all" fetches up to the cap first.
+- Table-origin: the grid re-runs `SELECT * FROM obj [WHERE …] ORDER BY …` and restarts lazy loading at page 1.
+- Free: sort the loaded rows of the current page locally, type-aware, NULLs first. The status line shows `sorted within N loaded rows` (the rows of the page). There is no "load all" (section 10.2, A24); a sort over the whole result needs `ORDER BY` in the statement.
 
 ### 10.5 Filtering
 
@@ -563,21 +567,21 @@ Three kinds, combinable with AND, each visible in the status line and individual
 
 Execution:
 
-- Table-origin: all three become one server-side `WHERE`. Quick search and column filters use bound parameters. The free expression is inserted verbatim in parentheses; if the server rejects it, the previous result stays and the error goes to the message log. Quick search on a large table is a full scan; the cancel key must work.
-- Free: quick search and column filters apply locally to the loaded rows, with the hint `filtered within N loaded rows` and the "load all" action.
+- Table-origin: all three become one server-side `WHERE`; the result starts again at page 1. Quick search and column filters use bound parameters. The free expression is inserted verbatim in parentheses; if the server rejects it, the previous result stays and the error goes to the message log. Quick search on a large table is a full scan; the cancel key must work.
+- Free: quick search and column filters apply locally to the loaded rows of the current page, with the hint `filtered within N loaded rows`.
 
 ### 10.6 Pivot view
 
 - A key toggles between the normal grid and the transposed grid.
 - Transposed: one row per attribute, one column per record. The first column (attribute names) is fixed. The column header shows the record number, or the primary-key value for table-origin results.
-- Horizontal scrolling moves through records and triggers lazy loading near the loaded end. Vertical scrolling moves through attributes.
+- Horizontal scrolling moves through the records of the current page and triggers lazy loading near the loaded end; `n`, F6 and `p` change the page as in the normal view. The record header shows the row number within the whole result. Vertical scrolling moves through attributes.
 - The cursor keeps pointing at the same record and attribute when toggling.
 - Sorting, filtering, cell detail, copy, edit and new-row actions work in both views and always refer to records.
 - Record columns use a common width (`pivot_column_width`, default 30).
 
 ### 10.7 Export
 
-`export <file>` writes the active result. Format follows the extension: `.csv`, `.json`. The export continues the open cursor to the end (ignoring `max_rows`), streams to the file, shows progress and can be cancelled. An active local filter is applied while streaming. An active local sort forces loading all rows before writing.
+`export <file>` writes the whole active result, not just the page in memory. Format follows the extension: `.csv`, `.json`. On the first page with the cursor still open, the export writes the loaded rows and continues the cursor to the end; otherwise it re-runs the statement from the start (with its arguments; read queries only) and streams every row to the file. It shows progress and can be cancelled. An active local filter is applied while streaming. An active local sort forces loading all rows into memory before writing (memory grows with the result).
 
 ## 11. Row form
 
@@ -746,7 +750,8 @@ Defaults; every binding can be changed in the configuration. Esc+digit and Alt+d
 | `f` | Column filter on the current column |
 | `w` | Free `WHERE` (table-origin only) |
 | `x` | Remove filters and sorting (menu if several are active) |
-| `a` | Load all rows up to the cap |
+| `n` / F6 | Next page (section 10.2) |
+| `p` | Previous page (re-runs a read query and skips the rows before it) |
 | `c` / `C` | Copy cell / row |
 | `[` / `]` | Previous / next result tab |
 
@@ -775,7 +780,8 @@ Directories: configuration in `~/.config/dbcc/` (`config.toml`, `commands/`), st
 ```toml
 [settings]
 fetch_size         = 500
-max_rows           = 100000
+max_rows           = 100000       # headless/compatibility; the UI grid pages instead
+page_size          = 3000         # rows per result page in the grid (at least 10)
 max_rows_buffered  = 10000
 max_column_width   = 40
 pivot_column_width = 30
@@ -853,7 +859,7 @@ Testing:
 | A3 | Profiles get `read_only` and `confirm_writes` flags for production databases. | confirmed |
 | A4 | Default key map of section 14, including letter keys for sort and filter in the grid. | confirmed |
 | A5 | Headless output formats: table, csv, tsv, json. | default |
-| A6 | `max_rows` defaults to 100,000; `fetch_size` to 500. | default |
+| A6 | `max_rows` defaults to 100,000; `fetch_size` to 500. For the UI grid, `max_rows` is superseded by `page_size` (A24). | default |
 | A7 | Copying to the clipboard goes through OSC 52. | default |
 | A8 | Lua sandbox without `os` and `io`. | default |
 | A9 | `cat` lists triggers and table options in addition to columns, keys, constraints and indexes. | default |
@@ -871,3 +877,5 @@ Testing:
 | A21 | On MySQL, replacing a routine by `DROP` plus `CREATE` is not atomic and may discard privileges granted on the routine. Verify this, and state it in the confirmation dialog. | confirmed: verified on MySQL 8.4 (grants are dropped while `automatic_sp_privileges = 1`, the default); the confirmation dialog states it |
 | A22 | Connections are created, edited, tested and deleted in the UI (F2) and saved under a name. Their credentials are saved too: in a separate credential store `~/.config/dbcc/credentials.toml` (mode 0600), never in `config.toml`; profiles reference it with `password = "stored"`. Supersedes the "no stored password" rule of 3.6. | confirmed (2026-11-21) |
 | A23 | The About page shows the web address https://www.datamedrix.com (A15). | confirmed |
+| A24 | A result tab holds at most `page_size` rows (default 3,000, configurable in `[settings]`); after that the owner pages: next page, next 3,000 rows, and so on (`n`/F6, `p`). Moving back, or forward after the cursor was closed, re-runs a read statement and skips rows. Supersedes `max_rows`, `capped` and "load all" of 10.2 for the UI grid; export writes the whole result. | confirmed (2026-11-21) |
+| A25 | Scratches work like DataGrip's scratch files: one file per scratch under `~/.local/state/dbcc/scratches/<connection>/`, named after its creation time (`scratch_YYYY-MM-DD_HH-MM-SS.sql`), saved automatically about 1 s after the last change; closing saves first and is refused when saving fails; Alt+O lists and re-opens scratches, Alt+E/Alt+R rename (names unique per connection, case-insensitive), Alt+D deletes. Supersedes the scratch-tab persistence of 9.1. | confirmed (2026-11-21) |

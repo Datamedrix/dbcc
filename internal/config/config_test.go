@@ -29,7 +29,7 @@ func TestDefaultsMissingFile(t *testing.T) {
 	}
 	d := DefaultSettings()
 	if d.FetchSize != 500 || d.MaxRows != 100000 || d.MaxRowsBuffered != 10000 || d.MaxColumnWidth != 40 ||
-		d.PivotColumnWidth != 30 || d.CompletionKeyAlt != "ctrl+o" || d.Mouse || !d.Splash {
+		d.PivotColumnWidth != 30 || d.CompletionKeyAlt != "ctrl+o" || d.Mouse || !d.Splash || d.PageSize != 3000 {
 		t.Fatalf("%+v", d)
 	}
 }
@@ -45,6 +45,19 @@ func TestPartialSettings(t *testing.T) {
 	}
 	if len(c.Warnings) != 0 {
 		t.Fatal(c.Warnings)
+	}
+}
+
+func TestPageSizeSetting(t *testing.T) {
+	c, err := Load(write(t, "c.toml", "[settings]\npage_size = 250\n", 0o600))
+	if err != nil || c.Settings.PageSize != 250 {
+		t.Fatalf("%v %+v", err, c)
+	}
+	for _, bad := range []string{"9", "0", "-1"} {
+		if _, err := Load(write(t, "c.toml", "[settings]\npage_size = "+bad+"\n", 0o600)); err == nil ||
+			!strings.Contains(err.Error(), "page_size") {
+			t.Errorf("page_size = %s: %v", bad, err)
+		}
 	}
 }
 

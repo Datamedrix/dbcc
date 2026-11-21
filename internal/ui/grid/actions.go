@@ -26,13 +26,15 @@ var ErrBusy = errors.New("a re-query is still running")
 //	filter_column  column-filter prompt              (needs Options.OpenPrompt)
 //	filter_where   free WHERE prompt, table-origin   (needs Options.OpenPrompt)
 //	clear_filters  remove the only active filter/sort, or a menu to pick one
-//	load_all       fetch all rows up to the cap, then re-apply the local view
+//	next_page      drop the page and show the next one (spec 10.2)
+//	prev_page      show the previous page (re-runs a read statement)
 //	rerun          re-query a table-origin result with an active sort/filter
 //
 // Other names (detail, edit_row, new_row, copy_*, rerun of free results …)
 // return false and stay with the application, which uses CurrentRecord,
 // CurrentColumn and CurrentRow to find the record in either view.
 func (g *Grid) Action(name string) bool {
+	g.clearNote()
 	switch name {
 	case "pivot":
 		g.TogglePivot()
@@ -59,8 +61,10 @@ func (g *Grid) Action(name string) bool {
 		case !g.openRemoveMenu(items):
 			g.RemoveAll()
 		}
-	case "load_all":
-		g.LoadAll()
+	case "next_page":
+		g.NextPage()
+	case "prev_page":
+		g.PrevPage()
 	case "rerun":
 		b := g.builder()
 		if b == nil || !g.state.Active() {
@@ -224,50 +228,116 @@ func (g *Grid) finishRequery(gen int, st State, origin *exec.Origin, res *exec.R
 	g.changed()
 }
 
-// LoadAll fetches all rows up to the cap (through Fetcher) and then
-// re-applies a local sort or filter.
-func (g *Grid) LoadAll() {
-	src := g.content.src
-	if src == nil || !src.More() {
+// ErrNoPaging is reported when the displayed source has no pages.
+var ErrNoPaging = errors.New("this result has no pages")
+
+// NextPage drops the current page and shows the next one (through
+// Fetcher). On the last page the status shows "last page".
+func (g *Grid) NextPage() { g.movePage(true) }
+
+// PrevPage shows the previous page (through Fetcher): the statement is
+// re-run from the start and the rows before the page are skipped (status
+// hint "skipping N rows…"; cancellable with the session cancel).
+func (g *Grid) PrevPage() { g.movePage(false) }
+
+// Page returns the 1-based page number and whether the source pages.
+func (g *Grid) Page() (int, bool) {
+	if p, ok := g.content.src.(Pager); ok {
+		return p.Page(), true
+	}
+	return 1, false
+}
+
+func (g *Grid) movePage(next bool) {
+	if g.content.src == nil {
+		return
+	}
+	p, ok := g.content.src.(Pager)
+	if !ok {
+		g.fail(ErrNoPaging)
 		return
 	}
 	st := g.content.fetch
-	if !st.busy.CompareAndSwap(false, true) {
+	if g.reqBusy.Load() || st.busy.Load() {
+		g.fail(ErrBusy)
 		return
 	}
-	g.hint = "loading all rows…"
+	switch {
+	case next && !p.HasNextPage():
+		g.setNote("last page")
+		return
+	case !next && p.Page() <= 1:
+		g.setNote("first page")
+		return
+	}
+	if !st.busy.CompareAndSwap(false, true) {
+		g.fail(ErrBusy)
+		return
+	}
+	if n := p.SkipRows(next); n > 0 {
+		g.hint = "skipping " + exec.FormatCount(n) + " rows…"
+	} else {
+		g.hint = "loading page…"
+	}
 	g.changed()
-	size := g.opts.FetchSize
-	onFetched := g.opts.OnFetched
+	gen := g.gen
 	g.opts.Fetcher(func() {
 		var err error
-		total := 0
-		for src.More() {
-			n, e := src.Fetch(size)
-			total += n
-			if e != nil {
-				err = e
-				break
-			}
-			if n == 0 {
-				break
-			}
+		if next {
+			err = p.NextPage()
+		} else {
+			err = p.PrevPage()
 		}
-		st.mu.Lock()
-		st.err, st.lastN, st.lastLen = err, total, src.Len()
-		st.attempts++
-		st.mu.Unlock()
 		st.busy.Store(false)
-		if onFetched != nil {
-			onFetched(total, err)
-		}
-		g.runUI(func() {
-			g.hint = ""
-			g.fail(err)
-			g.refreshView()
-			g.changed()
-		})
+		g.runUI(func() { g.finishPage(gen, err) })
 	})
+}
+
+func (g *Grid) finishPage(gen int, err error) {
+	if gen != g.gen {
+		return // the grid shows another result meanwhile
+	}
+	g.hint = ""
+	switch {
+	case errors.Is(err, exec.ErrLastPage):
+		g.note = "last page"
+	case errors.Is(err, exec.ErrFirstPage):
+		g.note = "first page"
+	case err != nil:
+		g.fail(err)
+	}
+	g.showPage()
+	g.changed()
+}
+
+// showPage rebuilds the content for the page the source shows now: widths,
+// local sort and filter are recomputed for the page; pivot mode and the
+// cursor column stay, the cursor goes to the first record.
+func (g *Grid) showPage() {
+	_, col := g.cursor()
+	pivot := g.content.pivot
+	g.content = newContent(g.content.src, g.opts.MaxColumnWidth, g.opts.PivotColumnWidth)
+	g.content.pivot = pivot
+	g.Table.SetContent(g.content)
+	if g.builder() != nil {
+		g.content.setState(g.state, g.originPK())
+		g.Table.SetOffset(0, 0)
+		g.selectDisplay(0, col)
+		return
+	}
+	g.applyLocal()
+}
+
+func (g *Grid) setNote(s string) {
+	g.note = s
+	g.changed()
+}
+
+func (g *Grid) clearNote() {
+	if g.note != "" {
+		g.note = ""
+		g.changed()
+	}
 }
 
 // TogglePivot switches between the normal and the pivot view; the cursor
@@ -403,11 +473,12 @@ func (g *Grid) sortText() string {
 
 // StatusParts are the grid's parts of the status line.
 type StatusParts struct {
-	Rows   string // "1,204+ rows", "100,000 rows capped"
+	Rows   string // "1,204+ rows", "rows 3,001–6,000 · page 2 +", "… · partial"
 	Sort   string // "name ▲, city ▼" ("" = none)
 	Filter string // `search "foo" AND city starts with "B" AND (id > 3)` ("" = none)
 	// Hint is "sorted within N loaded rows", "filtered within N loaded
-	// rows (M match)", "querying…", "loading all rows…" or "".
+	// rows (M match)" (within the current page), "querying…",
+	// "skipping N rows…", "loading page…", "last page", "first page" or "".
 	Hint  string
 	Pivot bool
 }
@@ -435,6 +506,8 @@ func (g *Grid) StatusParts() StatusParts {
 	switch {
 	case g.hint != "":
 		p.Hint = g.hint
+	case g.note != "":
+		p.Hint = g.note
 	case g.content.view != nil:
 		v := g.content.view
 		n := exec.FormatCount(g.content.src.Len())

@@ -485,20 +485,22 @@ func (rt *Runtime) exportResult(file, format string, force bool, every int, res 
 		}
 		return ctx.Err()
 	}
+	// The whole result, not just the page in memory (spec 10.7): Stream
+	// continues the open cursor of the first page or re-runs the statement
+	// from the start.
 	sorted := view != nil && view.Sorted()
 	if sorted {
-		all := append([]exec.Row(nil), res.Rows()...)
-		if err := res.Drain(ctx, 1000, func(rows []exec.Row) error {
-			all = append(all, rows...)
-			return nil
+		// A local sort needs every row in memory before the first is written.
+		var kept []exec.Row
+		if err := res.Stream(ctx, 1000, func(rows []exec.Row) error {
+			for _, r := range rows {
+				if view.Keep(r) {
+					kept = append(kept, r)
+				}
+			}
+			return ctx.Err()
 		}); err != nil {
 			return 0, err
-		}
-		kept := all[:0:0]
-		for _, r := range all {
-			if view.Keep(r) {
-				kept = append(kept, r)
-			}
 		}
 		for _, r := range view.Order(kept) {
 			if err := w.Row(r); err != nil {
@@ -507,13 +509,8 @@ func (rt *Runtime) exportResult(file, format string, force bool, every int, res 
 			n++
 			progress()
 		}
-	} else {
-		if err := write(res.Rows()); err != nil {
-			return n, err
-		}
-		if err := res.Drain(ctx, 1000, write); err != nil {
-			return n, err
-		}
+	} else if err := res.Stream(ctx, 1000, write); err != nil {
+		return n, err
 	}
 	if err := w.Close(); err != nil {
 		return n, err

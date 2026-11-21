@@ -14,7 +14,8 @@ import (
 // Settings are the global UI/engine settings (spec section 15).
 type Settings struct {
 	FetchSize        int    `toml:"fetch_size"`
-	MaxRows          int    `toml:"max_rows"`
+	MaxRows          int    `toml:"max_rows"` // kept for compatibility; the UI grid pages instead (PageSize)
+	PageSize         int    `toml:"page_size"`
 	MaxRowsBuffered  int    `toml:"max_rows_buffered"`
 	MaxColumnWidth   int    `toml:"max_column_width"`
 	PivotColumnWidth int    `toml:"pivot_column_width"`
@@ -28,6 +29,7 @@ func DefaultSettings() Settings {
 	return Settings{
 		FetchSize:        500,
 		MaxRows:          100000,
+		PageSize:         3000,
 		MaxRowsBuffered:  10000,
 		MaxColumnWidth:   40,
 		PivotColumnWidth: 30,
@@ -105,6 +107,9 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
 	cfg.Settings = raw.Settings
+	if err := validateSettings(cfg.Settings); err != nil {
+		return nil, fmt.Errorf("config %s: %w", path, err)
+	}
 	if raw.Keys != nil {
 		cfg.Keys = raw.Keys
 	}
@@ -125,6 +130,16 @@ func Load(path string) (*Config, error) {
 		cfg.Profiles[n] = p
 	}
 	return cfg, nil
+}
+
+// MinPageSize is the smallest accepted page_size.
+const MinPageSize = 10
+
+func validateSettings(s Settings) error {
+	if s.PageSize < MinPageSize {
+		return fmt.Errorf("settings.page_size = %d: must be at least %d", s.PageSize, MinPageSize)
+	}
+	return nil
 }
 
 func validateProfile(p *Profile) error {

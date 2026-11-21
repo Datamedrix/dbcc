@@ -450,7 +450,7 @@ func TestLocalFilters(t *testing.T) {
 	}
 }
 
-func TestLocalViewAbsorbsLazyRowsAndLoadAll(t *testing.T) {
+func TestLocalViewAbsorbsLazyRows(t *testing.T) {
 	f := newFake(10, 30)
 	g := NewWithSource(f, Options{FetchSize: 10})
 	s := newScreen(t, 40, 30) // page larger than the rows: Draw fetches
@@ -468,15 +468,8 @@ func TestLocalViewAbsorbsLazyRowsAndLoadAll(t *testing.T) {
 	if got := g.content.row(0)[0]; got != strconv.Itoa(f.Len()) {
 		t.Fatalf("lazy rows not sorted in: first = %v", got)
 	}
-	g.Action("load_all")
-	if f.Len() != 30 {
-		t.Fatalf("load_all: %d", f.Len())
-	}
-	if st := g.Status(); !strings.Contains(st, "sorted within 30 loaded rows") {
-		t.Fatalf("status %q", st)
-	}
-	if got := g.content.row(0)[0]; got != "30" {
-		t.Fatalf("first after load_all = %v", got)
+	if g.Action("load_all") {
+		t.Fatal("load_all is gone: results are paged (spec 10.2)")
 	}
 	// A filter extends incrementally.
 	f2 := newFake(10, 100)

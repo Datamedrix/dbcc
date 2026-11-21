@@ -56,6 +56,7 @@ func (a *App) gridOptionsFor(res *exec.Result) grid.Options {
 	s := a.sessionOf(res)
 	opts := grid.Options{
 		FetchSize:        a.cfg.Settings.FetchSize,
+		PageSize:         a.cfg.Settings.PageSize,
 		MaxColumnWidth:   a.cfg.Settings.MaxColumnWidth,
 		PivotColumnWidth: a.cfg.Settings.PivotColumnWidth,
 		Fetcher:          func(fn func()) { a.do(fn) },

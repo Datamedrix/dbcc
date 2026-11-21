@@ -1,6 +1,10 @@
 package grid
 
-import "dbcc/internal/exec"
+import (
+	"context"
+
+	"dbcc/internal/exec"
+)
 
 // Source is what the grid displays. *exec.Result is adapted by
 // ResultSource; tests use fakes.
@@ -18,7 +22,24 @@ type Source interface {
 	Status() string
 }
 
-// ResultSource adapts *exec.Result to Source.
+// Pager is implemented by sources that show one page of a larger result
+// (spec 10.2): Len and Row are page-relative. Page, Offset, HasNextPage
+// and SkipRows are called on the UI goroutine; NextPage and PrevPage
+// through the grid's Fetcher (they do database I/O).
+type Pager interface {
+	Page() int         // 1-based page number
+	Offset() int       // rows of the whole result before the page
+	HasNextPage() bool // a next page may exist
+	// SkipRows is the number of rows moving to the next (or previous) page
+	// reads and discards by re-running the statement; 0 when none.
+	SkipRows(next bool) int
+	// NextPage and PrevPage replace the page; on an error the page stays
+	// (exec.ErrLastPage, exec.ErrFirstPage, exec.ErrNotRead, …).
+	NextPage() error
+	PrevPage() error
+}
+
+// ResultSource adapts *exec.Result to Source and Pager.
 type ResultSource struct{ R *exec.Result }
 
 // Columns returns the result's columns.
@@ -45,3 +66,21 @@ func (s ResultSource) Fetch(n int) (int, error) { return s.R.Fetch(n) }
 
 // Status renders the row count for the status line.
 func (s ResultSource) Status() string { return s.R.Status() }
+
+// Page is the result's page number.
+func (s ResultSource) Page() int { return s.R.Page() }
+
+// Offset is the number of rows before the page.
+func (s ResultSource) Offset() int { return s.R.Offset() }
+
+// HasNextPage reports whether a next page may exist.
+func (s ResultSource) HasNextPage() bool { return s.R.HasNextPage() }
+
+// SkipRows is the number of rows a re-run skips to reach the page.
+func (s ResultSource) SkipRows(next bool) int { return s.R.SkipRows(next) }
+
+// NextPage loads the next page.
+func (s ResultSource) NextPage() error { return s.R.NextPage(context.Background()) }
+
+// PrevPage loads the previous page.
+func (s ResultSource) PrevPage() error { return s.R.PrevPage(context.Background()) }

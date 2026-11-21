@@ -41,6 +41,10 @@ type Fetcher func(fn func())
 type Options struct {
 	// FetchSize is the number of rows fetched per chunk (default 500).
 	FetchSize int
+	// PageSize is the number of rows per page (page_size). Results from
+	// the runner bring their page size; a displayed *exec.Result without
+	// one gets this (Result.SetPageSize). 0 leaves results unpaged.
+	PageSize int
 	// MaxColumnWidth caps column widths; longer values end in "…" (default 40).
 	MaxColumnWidth int
 	// PivotColumnWidth is the width of record columns in the pivot view
@@ -49,7 +53,7 @@ type Options struct {
 	// Fetcher runs fetches and re-queries (default: synchronous).
 	Fetcher Fetcher
 	// UI runs f on the UI goroutine (tview: app.QueueUpdateDraw(f)). It is
-	// used to apply the outcome of a re-query and of "load all"; nil runs f
+	// used to apply the outcome of a re-query and of a page change; nil runs f
 	// inline on the Fetcher's goroutine, which is only correct with the
 	// default synchronous Fetcher.
 	UI func(f func())
@@ -109,7 +113,8 @@ type Grid struct {
 	gen   int // bumped by SetSource: stale re-queries are dropped
 	// requery in flight
 	reqBusy atomic.Bool
-	hint    string // transient status hint ("querying…")
+	hint    string // status hint while something runs ("querying…")
+	note    string // status note until the next key ("last page")
 	prompt  *promptState
 }
 
@@ -128,6 +133,9 @@ type fetchState struct {
 func New(res *exec.Result, opts Options) *Grid {
 	var src Source
 	if res != nil {
+		if opts.PageSize > 0 {
+			res.SetPageSize(opts.PageSize)
+		}
 		src = ResultSource{res}
 	}
 	return NewWithSource(src, opts)
@@ -173,6 +181,9 @@ func (g *Grid) SetResult(res *exec.Result) *Grid {
 	if res == nil {
 		return g.SetSource(nil)
 	}
+	if g.opts.PageSize > 0 {
+		res.SetPageSize(g.opts.PageSize)
+	}
 	return g.SetSource(ResultSource{res})
 }
 
@@ -181,7 +192,7 @@ func (g *Grid) SetResult(res *exec.Result) *Grid {
 func (g *Grid) SetSource(src Source) *Grid {
 	g.gen++
 	g.state = State{}
-	g.hint = ""
+	g.hint, g.note = "", ""
 	g.content = newContent(src, g.opts.MaxColumnWidth, g.opts.PivotColumnWidth)
 	if pk := g.originPK(); pk != nil {
 		g.content.setState(State{}, pk)
@@ -367,6 +378,7 @@ func (g *Grid) Draw(screen tcell.Screen) {
 func (g *Grid) InputHandler() func(event *tcell.EventKey, setFocus func(p tview.Primitive)) {
 	h := g.Table.InputHandler()
 	return func(ev *tcell.EventKey, setFocus func(p tview.Primitive)) {
+		g.clearNote()
 		if g.emptyKey(ev) {
 			return
 		}
@@ -724,7 +736,11 @@ func (c *content) recordLabel(disp int) string {
 		}
 		return strings.Join(parts, ", ")
 	}
-	return strconv.Itoa(c.srcIndex(disp) + 1)
+	off := 0
+	if p, ok := c.src.(Pager); ok {
+		off = p.Offset()
+	}
+	return strconv.Itoa(off + c.srcIndex(disp) + 1)
 }
 
 // headerCell is a bold, non-selectable cell padded to w so that column

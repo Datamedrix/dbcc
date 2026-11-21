@@ -82,14 +82,35 @@ func TestFooterAndHelp(t *testing.T) {
 	if f[0] != "Help" || f[4] != "Run" || f[5] != "RunAll" || f[9] != "Quit" {
 		t.Errorf("editor footer %q", f)
 	}
-	if g := k.Footer(PaneGrid); g[2] != "Pivot" {
+	if g := k.Footer(PaneGrid); g[2] != "Pivot" || g[5] != "NextPg" {
 		t.Errorf("grid footer %q", g)
 	}
 	h := k.HelpText(PaneGrid)
-	for _, want := range []string{"Toggle pivot view", "Quit", "Esc+digit"} {
+	for _, want := range []string{"Toggle pivot view", "Quit", "Esc+digit", "Next page", "Previous page"} {
 		if !strings.Contains(h, want) {
 			t.Errorf("help lacks %q", want)
 		}
+	}
+}
+
+func TestPagingKeys(t *testing.T) {
+	k := DefaultKeymap()
+	ev := func(key tcell.Key, r rune) *tcell.EventKey { return tcell.NewEventKey(key, r, 0) }
+	for _, c := range []struct {
+		ev   *tcell.EventKey
+		want string
+	}{
+		{ev(tcell.KeyRune, 'n'), "next_page"},
+		{ev(tcell.KeyF6, 0), "next_page"},
+		{ev(tcell.KeyRune, 'p'), "prev_page"},
+		{ev(tcell.KeyRune, 'a'), ""}, // "load all" is gone (spec 10.2)
+	} {
+		if a := k.Action(PaneGrid, c.ev); a != c.want {
+			t.Errorf("grid %v = %q, want %q", c.ev.Name(), a, c.want)
+		}
+	}
+	if strings.Contains(k.HelpText(PaneGrid), "Load all") {
+		t.Error("help still offers load all")
 	}
 }
 

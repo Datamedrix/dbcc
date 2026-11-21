@@ -67,9 +67,12 @@ var ErrDeclined = errors.New("cancelled by user")
 type Runner struct {
 	Sess *session.Session
 	Sink Sink
-	// FetchSize is the lazy-loading chunk; MaxRows caps lazy results;
-	// MaxBuffered caps buffered results (all but the last of a script).
-	FetchSize, MaxRows, MaxBuffered int
+	// FetchSize is the lazy-loading chunk; MaxRows caps lazy results
+	// without paging; MaxBuffered caps buffered results (all but the last
+	// of a script). PageSize > 0 makes lazy results hold one page of
+	// PageSize rows at a time (UI grid, page_size); MaxRows then does not
+	// apply.
+	FetchSize, MaxRows, MaxBuffered, PageSize int
 	// Confirm is asked for non-read statements when the profile has
 	// confirm_writes set; nil means "no".
 	Confirm func(stmt string) bool
@@ -197,7 +200,8 @@ func (r *Runner) RunStatement(ctx context.Context, st sqltext.Statement, last bo
 			cur := &Cursor{rows: rows, cols: cols}
 			res.cursor = cur
 			if lazy {
-				closer := closerFunc(func() error { res.markPartial(); return cur.Close() })
+				r.pageable(res, st.Text, nil)
+				closer := closerFunc(func() error { res.markPartial(cur); return cur.Close() })
 				cur.onClose = func() { r.Sess.ReleaseCursor(closer); streamCancel() }
 				cur.abort = func() { r.Sess.AbortStreaming(streamCancel) }
 				r.Sess.SetCursor(closer)
@@ -209,7 +213,7 @@ func (r *Runner) RunStatement(ctx context.Context, st sqltext.Statement, last bo
 				res.Duration = time.Since(start)
 				msg.Duration = res.Duration
 				msg.Returned = res.Len()
-				keepOpen = res.More()
+				keepOpen = !cur.Done() // cursor still open (a full page keeps it open too)
 				if keepOpen {
 					r.Sink.Result(res)
 					r.emitLazy(msg, began)
@@ -561,9 +565,10 @@ func (r *Runner) Grid(ctx context.Context, q string, origin *Origin, args ...any
 		title = origin.Object.Object
 	}
 	res := &Result{Title: title, SQL: q, Columns: cols, MaxRows: r.MaxRows, Origin: origin}
+	r.pageable(res, q, args)
 	cur := &Cursor{rows: rows, cols: cols}
 	res.cursor = cur
-	closer := closerFunc(func() error { res.markPartial(); return cur.Close() })
+	closer := closerFunc(func() error { res.markPartial(cur); return cur.Close() })
 	cur.onClose = func() { r.Sess.ReleaseCursor(closer); streamCancel() }
 	cur.abort = func() { r.Sess.AbortStreaming(streamCancel) }
 	r.Sess.SetCursor(closer)
@@ -573,7 +578,7 @@ func (r *Runner) Grid(ctx context.Context, q string, origin *Origin, args ...any
 	}
 	res.Duration = time.Since(start)
 	msg.Duration, msg.Returned = res.Duration, res.Len()
-	keepOpen = res.More()
+	keepOpen = !cur.Done() // cursor still open (a full page keeps it open too)
 	if keepOpen {
 		r.emitLazy(msg, began)
 	} else {
@@ -581,4 +586,68 @@ func (r *Runner) Grid(ctx context.Context, q string, origin *Origin, args ...any
 		r.emit(msg)
 	}
 	return res, nil
+}
+
+// pageable sets up paging and re-runs of a lazy result of q with args.
+func (r *Runner) pageable(res *Result, q string, args []any) {
+	res.Args = args
+	res.PageSize = r.PageSize
+	res.FetchSize = r.FetchSize
+	res.SetReopen(r.Sess.Dialect.IsRead(q), r.reopener(res, q, args))
+}
+
+// ErrColumnsChanged is returned when a re-run of a result's statement
+// returns different columns.
+var ErrColumnsChanged = errors.New("the statement returns different columns now; re-run it")
+
+// reopener returns the re-run mechanism of res (Result.SetReopen): q is
+// executed again on the main session like any statement — guards, the
+// open-cursor rule (the result's own open cursor is closed first), the
+// statement context (cancel works while work skips rows) and stream abort
+// apply. The new cursor holds the main session like any lazy result; it is
+// not attached to res — work decides (paging attaches it, export streams it).
+func (r *Runner) reopener(res *Result, q string, args []any) func(ctx context.Context, work func(c *Cursor) error) error {
+	return func(ctx context.Context, work func(c *Cursor) error) error {
+		if err := r.Guard(q); err != nil {
+			return err
+		}
+		r.Sess.CloseCursor() // open-cursor rule
+		ctx, done := r.Sess.StatementContext(ctx)
+		keepOpen := false
+		defer func() { done(keepOpen) }()
+		ctx, streamCancel := context.WithCancel(ctx)
+		defer func() {
+			if !keepOpen {
+				streamCancel()
+			}
+		}()
+		if _, err := r.begin(ctx, q); err != nil {
+			return err
+		}
+		rows, err := r.Sess.Main().QueryContext(ctx, q, args...)
+		if err != nil {
+			r.trackFailed(ctx)
+			return err
+		}
+		cols, err := columnInfos(rows)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		if len(cols) != len(res.Columns) {
+			rows.Close()
+			return ErrColumnsChanged
+		}
+		cur := &Cursor{rows: rows, cols: cols}
+		closer := closerFunc(func() error { res.markPartial(cur); return cur.Close() })
+		cur.onClose = func() { r.Sess.ReleaseCursor(closer); streamCancel() }
+		cur.abort = func() { r.Sess.AbortStreaming(streamCancel) }
+		r.Sess.SetCursor(closer)
+		if err := work(cur); err != nil {
+			cur.Close()
+			return err
+		}
+		keepOpen = !cur.Done()
+		return nil
+	}
 }
