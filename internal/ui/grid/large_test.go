@@ -64,7 +64,7 @@ func TestMillionRowsResponsive(t *testing.T) {
 		start := time.Now()
 		f()
 		d := time.Since(start) / time.Duration(frames)
-		if d > 100*time.Millisecond {
+		if d > 100*time.Millisecond && !raceEnabled {
 			t.Errorf("%s: %v per frame", name, d)
 		} else {
 			t.Logf("%s: %v per frame", name, d)
@@ -181,7 +181,7 @@ func TestMillionRowsPivot(t *testing.T) {
 	draw(s, g)
 	g.Action("pivot")
 	draw(s, g)
-	if d := time.Since(start) / 25; d > 100*time.Millisecond {
+	if d := time.Since(start) / 25; d > 100*time.Millisecond && !raceEnabled {
 		t.Errorf("pivot: %v per frame", d)
 	} else {
 		t.Logf("pivot: %v per frame", d)
