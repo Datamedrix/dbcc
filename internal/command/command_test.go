@@ -126,7 +126,8 @@ func TestUserOverrideAndFallback(t *testing.T) {
 	}
 	for i, f := range []string{"cd.lua", "ls.lua", "wc.lua"} {
 		m := h.messages[i]
-		if m.Err == nil || !strings.Contains(m.Info, f) || !strings.Contains(m.Info, "skipped") {
+		// The report is the error itself (one line; no duplicate in Info).
+		if m.Err == nil || !strings.Contains(m.Err.Error(), f) || !strings.Contains(m.Err.Error(), "skipped") || m.Info != "" {
 			t.Errorf("report %d: %+v", i, m)
 		}
 	}

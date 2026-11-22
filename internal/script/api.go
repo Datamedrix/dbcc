@@ -736,7 +736,7 @@ func (rt *Runtime) apiExec(L *lua.LState, self *lua.LTable) int {
 		// A "yes" to ctx:confirm earlier in this invocation (which showed
 		// all statements at once, as cp does) covers this statement.
 		if !rt.inv.confirmed {
-			ok, err := rt.env.Host.Confirm(fmt.Sprintf("%s will run on %s:\n\n%s", rt.inv.cmd.Name, s.Profile.Name, q))
+			ok, err := rt.env.Host.Confirm(fmt.Sprintf("%s will run on %s:\n\n%s%s", rt.inv.cmd.Name, s.Profile.Name, q, describeParams(args)))
 			if err != nil {
 				return rt.raise(err)
 			}
@@ -1012,4 +1012,32 @@ func (rt *Runtime) apiAbout(L *lua.LState, self *lua.LTable) int {
 		return rt.raise(fmt.Errorf("ctx:about: %w", err))
 	}
 	return 0
+}
+
+// describeParams renders bound parameter values for confirmation dialogs,
+// which otherwise show only the placeholders.
+func describeParams(args []any) string {
+	if len(args) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\nwith parameters:")
+	for i, a := range args {
+		switch v := a.(type) {
+		case nil:
+			fmt.Fprintf(&b, "\n  %d: NULL", i+1)
+		case string:
+			fmt.Fprintf(&b, "\n  %d: %s", i+1, quoteForDisplay(v))
+		default:
+			fmt.Fprintf(&b, "\n  %d: %v", i+1, v)
+		}
+	}
+	return b.String()
+}
+
+func quoteForDisplay(s string) string {
+	if len([]rune(s)) > 200 {
+		s = string([]rune(s)[:199]) + "…"
+	}
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }

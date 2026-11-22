@@ -1550,6 +1550,8 @@ The first fields are those of `ctx:resolve`. Real values for `logs` on MariaDB: 
 - **Headless exit codes:** `2` for invocation errors (wrong number of arguments, unknown flag, not an integer), `1` for every error while running (`error(…)`, SQL errors, a declined confirmation), `0` on success.
 - `pcall(f, …)` catches errors, those of primitives included: `local ok, err = pcall(ctx.query, ctx, sql)`.
 
+- When a script fails, the message log shows the **Lua stack** below the error ("Lua stack:" with file and line per call level), so you find the place in the script. A script that cannot be loaded appears as one line "user command script skipped: <path>: <error>".
+
 ### Sandbox
 
 - Lua 5.1 (gopher-lua). There is **no** integer division `//`, no bitwise operators and no `goto` – use `math.floor(a / b)`.
@@ -1557,7 +1559,7 @@ The first fields are those of `ctx:resolve`. Real values for `logs` on MariaDB: 
 - Every script has **its own global environment**: one script's globals are not visible in others; reads fall back to the shared standard functions. There is no shared code (no `require`); helper functions belong in the file that uses them.
 - The tables `dbcc` and `dbcc.fmt` are read-only (`dbcc is read-only`).
 - Top-level state of a script lives as long as the Lua runtime: in the UI until `reload` or quitting, headless only for the one command.
-- Loading is limited to 5 seconds, the `run` function is not. `F8` cancels only a running SQL statement of the command, **not pure Lua code**: an endless loop in `run` blocks all further commands until dbcc is quit (`F10`). Headless, `Ctrl+C` does not stop such a loop either; only `kill` (SIGTERM) does. So write loops with an exit condition.
+- Loading is limited to 5 seconds, the `run` function is not. `F8` interrupts a running command: a running SQL statement on the server and the Lua code of the script, including an endless loop in `run`. The command ends with "<command>: interrupted"; all commands keep working afterwards. If the script is waiting for the database, the statement ends first, then the script. Headless, `Ctrl+C` (SIGINT) does the same.
 
 ### Examples
 
@@ -1779,7 +1781,7 @@ $ dbcc -p docro -c "archive-logs 2026-06-01"
 ERROR: archive-logs: writes and is blocked in the read-only profile docro
 ```
 
-In the UI a dialog with this text and "Yes"/"No" appears. **Without** the `ctx:confirm`, dbcc asks before each of the two statements separately ("archive-logs will run on doc:" plus the statement, placeholder `?` instead of the value). In the test the `INSERT` was confirmed and the `DELETE` declined: the command ended with "archive-logs: cancelled by user", and the copied rows were then in both tables – hence the single question.
+In the UI a dialog with this text and "Yes"/"No" appears. **Without** the `ctx:confirm`, dbcc asks before each of the two statements separately ("archive-logs will run on doc:" plus the statement and below it "with parameters:" with the bound values). In the test the `INSERT` was confirmed and the `DELETE` declined: the command ended with "archive-logs: cancelled by user", and the copied rows were then in both tables – hence the single question.
 
 #### e) Dialect-specific: `server`
 

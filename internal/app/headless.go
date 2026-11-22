@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"dbcc/internal/config"
@@ -238,8 +239,12 @@ func RunHeadless(ctx context.Context, env *Env) error {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	defer signal.Stop(sig)
+	var running atomic.Pointer[script.Runtime] // the Lua runtime of -c, once created
 	go func() {
 		for range sig {
+			if rt := running.Load(); rt != nil {
+				rt.Interrupt() // stops an endless loop in a command script
+			}
 			if s := h.ws.Current(); s != nil {
 				s.Cancel(context.Background())
 			}
@@ -253,6 +258,7 @@ func RunHeadless(ctx context.Context, env *Env) error {
 		if err != nil {
 			return finish(env, err, h.sink)
 		}
+		running.Store(reg.Runtime())
 		defer reg.Runtime().Close()
 		err = reg.Dispatch(ctx, o.Command)
 		if err == nil {

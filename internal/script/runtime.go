@@ -51,6 +51,8 @@ type Runtime struct {
 	env Env
 
 	commands map[string]*Command
+	// invMu guards inv for Interrupt (called from other goroutines).
+	invMu sync.Mutex
 	// cmdMu guards commands: the registry is read from the UI goroutine
 	// (help, completion) while the worker loads scripts.
 	cmdMu sync.RWMutex
@@ -73,6 +75,10 @@ type Runtime struct {
 type invocation struct {
 	cmd *Command
 	ctx context.Context
+	// stop interrupts the Lua code of this invocation (F8, Ctrl+C). It is
+	// separate from ctx, which the SQL primitives use: cancelling the SQL
+	// context would make the MySQL driver close the pinned connection.
+	stop context.CancelFunc
 	// confirmed: the owner said yes to ctx:confirm in this write command;
 	// its following ctx:exec calls do not ask again.
 	confirmed bool
@@ -192,10 +198,18 @@ func (rt *Runtime) Run(ctx context.Context, cmd *Command, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	rt.inv = &invocation{cmd: cmd, ctx: ctx}
+	luaCtx, stop := context.WithCancel(context.Background())
+	defer stop()
+	rt.invMu.Lock()
+	rt.inv = &invocation{cmd: cmd, ctx: ctx, stop: stop}
+	rt.invMu.Unlock()
 	rt.goErr, rt.goErrMsg = nil, ""
-	defer func() { rt.inv = nil }()
-	rt.L.SetContext(ctx)
+	defer func() {
+		rt.invMu.Lock()
+		rt.inv = nil
+		rt.invMu.Unlock()
+	}()
+	rt.L.SetContext(luaCtx)
 	defer rt.L.RemoveContext()
 
 	L := rt.L
@@ -222,7 +236,9 @@ func (rt *Runtime) Run(ctx context.Context, cmd *Command, args []string) error {
 		if errors.As(err, &ae) {
 			ce.Trace = ae.StackTrace
 		}
-		if ctx.Err() != nil {
+		if luaCtx.Err() != nil {
+			ce.Msg, ce.Err = "interrupted", context.Canceled
+		} else if ctx.Err() != nil {
 			ce.Err = ctx.Err()
 		} else if rt.goErr != nil && strings.Contains(ce.Msg, rt.goErrMsg) {
 			ce.Err = rt.goErr
@@ -230,6 +246,20 @@ func (rt *Runtime) Run(ctx context.Context, cmd *Command, args []string) error {
 		return ce
 	}
 	return nil
+}
+
+// Interrupt stops the Lua code of the running command, e.g. an endless
+// loop (F8 in the UI, Ctrl+C headless). A primitive that is waiting for the
+// database finishes first; cancel the statement through the session for
+// that. Safe to call from any goroutine; no-op when nothing runs.
+func (rt *Runtime) Interrupt() bool {
+	rt.invMu.Lock()
+	defer rt.invMu.Unlock()
+	if rt.inv == nil || rt.inv.stop == nil {
+		return false
+	}
+	rt.inv.stop()
+	return true
 }
 
 // cleanLuaErr returns the error value of a Lua error without stack trace.

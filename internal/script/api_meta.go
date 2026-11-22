@@ -443,7 +443,7 @@ func (rt *Runtime) exportResult(file, format string, force bool, every int, res 
 	f, err := os.OpenFile(file, flag, 0o644)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
-			return 0, fmt.Errorf("%s already exists; use -f to overwrite", file)
+			return 0, fmt.Errorf("%s already exists; overwrite with export -f (in Lua: ctx:export(file, {force = true}))", file)
 		}
 		return 0, err
 	}

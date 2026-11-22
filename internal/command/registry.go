@@ -110,7 +110,9 @@ func (r *Registry) LoadUserDir(dir string) int {
 }
 
 func (r *Registry) report(err error) {
-	r.rt.Env().Host.Message(exec.Message{Time: time.Now(), Err: err, Info: err.Error(), Affected: -1, Returned: -1})
+	// One line: gopher-lua syntax errors end with a newline.
+	msg := strings.TrimSpace(err.Error())
+	r.rt.Env().Host.Message(exec.Message{Time: time.Now(), Err: errors.New(msg), Affected: -1, Returned: -1})
 }
 
 // Lookup returns the command registered under name.

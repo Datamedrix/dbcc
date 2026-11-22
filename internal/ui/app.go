@@ -215,7 +215,11 @@ func (a *App) loadCommands(reload bool) {
 		if old != nil {
 			old.Runtime().Close()
 		}
-		a.message(exec.Message{Info: fmt.Sprintf("commands reloaded: %d commands (user scripts from %s)", len(reg.Commands()), a.opts.UserCmdDir)})
+		src := "user scripts from " + a.opts.UserCmdDir
+		if a.opts.NoUserCommands {
+			src = "built-in commands only: --no-user-commands"
+		}
+		a.message(exec.Message{Info: fmt.Sprintf("commands reloaded: %d commands (%s)", len(reg.Commands()), src)})
 	}
 }
 
@@ -450,7 +454,7 @@ func (a *App) runCommand(name string, args ...string) {
 	}
 	a.clearError()
 	if err := a.reg.Run(context.Background(), name, args...); err != nil {
-		a.message(exec.Message{Err: err})
+		a.message(commandErrorMessage(err))
 	}
 }
 
@@ -508,6 +512,11 @@ func (a *App) handle(pane, action string) bool {
 				res.StopFollow()
 				a.message(exec.Message{Info: res.Title + ": following stopped (F8)"})
 			}()
+		}
+		// F8 also interrupts the Lua code of a running command (an endless
+		// loop in a user script); a running statement is cancelled below.
+		if a.busy.Load() > 0 && a.reg != nil {
+			a.reg.Runtime().Interrupt()
 		}
 		if s := a.ws.Current(); s != nil && a.busy.Load() > 0 {
 			go func() {
@@ -894,7 +903,7 @@ func (a *App) cmdDone(key tcell.Key) {
 			if err := a.reg.Dispatch(context.Background(), line); err != nil {
 				var se *exec.StmtError
 				if !errors.As(err, &se) { // statement errors are logged by the runner
-					a.message(exec.Message{Err: err})
+					a.message(commandErrorMessage(err))
 				} else {
 					a.ui(func() { a.lastErr = se.Error() })
 				}

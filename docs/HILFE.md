@@ -335,7 +335,7 @@ Scratches funktionieren wie die Scratch-Dateien von DataGrip:
 | PostgreSQL | View, Funktion, Prozedur (jede Überladung): `CREATE OR REPLACE`; Trigger: `CREATE OR REPLACE TRIGGER` ab PostgreSQL 14, sonst (und für Constraint-Trigger) `DROP TRIGGER IF EXISTS … ON tabelle` plus `CREATE`; Materialized view: `DROP MATERIALIZED VIEW IF EXISTS`, `CREATE`, ihre Indizes und ihr Kommentar |
 | SQL Server | GO-Batches: ein Schutz-Batch, der mit `THROW` abbricht, wenn die Sitzung nicht in der Datenbank des Objekts ist; ggf. `SET ANSI_NULLS`/`QUOTED_IDENTIFIER OFF` wie beim Anlegen; der Modultext mit `CREATE OR ALTER` und `[schema].[name]` (vor SQL Server 2016: Stub plus `ALTER`); am Ende die Optionen wieder `ON` |
 
-*Run all* (`F6`) in einem Objekt-Tab ersetzt das Objekt. Das zählt als Schreibvorgang: In schreibgeschützten Profilen ist es gesperrt, bei `confirm_writes` wird gefragt („Replace X on prof?“). **Auf MySQL wird immer gefragt**, auch ohne `confirm_writes`, mit dem Hinweis, dass `DROP` + `CREATE` nicht atomar ist und Rechte auf der Routine bei `automatic_sp_privileges = 1` – dem Standard – verloren gehen (MariaDB ersetzt mit `CREATE OR REPLACE` und behält die Rechte). Nach erfolgreichem Lauf gilt der Tab als gespeichert und die Meldung „replaced <name>“ erscheint. `Alt+R` stellt den Quelltext wie geladen wieder her (als rückgängig machbarer Schritt). Ein Objekt-Tab mit Änderungen fragt beim Schließen und beim Beenden nach.
+*Run all* (`F6`) in einem Objekt-Tab ersetzt das Objekt. Das zählt als Schreibvorgang: In schreibgeschützten Profilen ist es gesperrt, bei `confirm_writes` wird gefragt („Replace X on prof?“). **Auf MySQL wird immer gefragt**, auch ohne `confirm_writes`, mit dem Hinweis, dass `DROP` + `CREATE` nicht atomar ist und Rechte auf der Routine bei `automatic_sp_privileges = 1` – dem Standard – verloren gehen (MariaDB ersetzt mit `CREATE OR REPLACE` und behält die Rechte). Nach erfolgreichem Lauf gilt der Tab als gespeichert und die Meldung „replaced \<name>“ erscheint. `Alt+R` stellt den Quelltext wie geladen wieder her (als rückgängig machbarer Schritt). Ein Objekt-Tab mit Änderungen fragt beim Schließen und beim Beenden nach.
 
 ---
 
@@ -1547,6 +1547,8 @@ Die ersten Felder entsprechen `ctx:resolve`. Echte Werte für `logs` auf MariaDB
 - **Headless Exit-Codes:** `2` für Aufruffehler (falsche Zahl von Argumenten, unbekanntes Flag, kein Integer), `1` für alle Fehler beim Ausführen (`error(…)`, SQL-Fehler, abgelehnte Rückfrage), `0` bei Erfolg.
 - `pcall(f, …)` fängt Fehler ab, auch die von Primitiven: `local ok, err = pcall(ctx.query, ctx, sql)`.
 
+- Bei einem Fehler im Skript zeigt das Message-Log unter der Fehlermeldung den **Lua-Stack** („Lua stack:“ mit Datei und Zeile je Aufrufebene) – damit findest du die Stelle im Skript. Ein Skript, das sich nicht laden lässt, erscheint als eine Zeile „user command script skipped: <pfad>: <fehler>“.
+
 ### Sandbox
 
 - Lua 5.1 (gopher-lua). Es gibt **keine** Ganzzahldivision `//`, keine Bitoperatoren und kein `goto` – `math.floor(a / b)` verwenden.
@@ -1554,7 +1556,7 @@ Die ersten Felder entsprechen `ctx:resolve`. Echte Werte für `logs` auf MariaDB
 - Jedes Skript hat eine **eigene globale Umgebung**: Globale Variablen eines Skripts sind in anderen nicht sichtbar, Lesezugriffe fallen auf die gemeinsamen Standardfunktionen zurück. Gemeinsamen Code gibt es deshalb nicht (kein `require`); Hilfsfunktionen gehören in die Datei, die sie nutzt.
 - Die Tabellen `dbcc` und `dbcc.fmt` sind schreibgeschützt (`dbcc is read-only`).
 - Zustand auf oberster Ebene eines Skripts lebt so lange wie die Lua-Laufzeit: in der UI bis `reload` oder Programmende, headless nur für den einen Befehl.
-- Laden ist auf 5 Sekunden begrenzt, die `run`-Funktion nicht. `F8` bricht nur ein laufendes SQL-Statement des Befehls ab, **nicht reinen Lua-Code**: Eine Endlosschleife in `run` blockiert alle weiteren Befehle, bis dbcc beendet wird (`F10`). Headless bricht auch `Ctrl+C` eine solche Schleife nicht ab; dort hilft nur `kill` (SIGTERM). Schleifen also mit Abbruchbedingung schreiben.
+- Laden ist auf 5 Sekunden begrenzt, die `run`-Funktion nicht. `F8` bricht einen laufenden Befehl ab: ein laufendes SQL-Statement serverseitig und den Lua-Code des Skripts, auch eine Endlosschleife in `run`. Der Befehl endet mit „<befehl>: interrupted“, danach funktionieren alle Befehle normal. Wartet das Skript gerade auf die Datenbank, endet zuerst das Statement, dann das Skript. Headless bricht `Ctrl+C` (SIGINT) ebenso ab.
 
 ### Beispiele
 
@@ -1776,7 +1778,7 @@ $ dbcc -p docro -c "archive-logs 2026-06-01"
 ERROR: archive-logs: writes and is blocked in the read-only profile docro
 ```
 
-In der UI erscheint ein Dialog mit diesem Text und „Yes“/„No“. **Ohne** das `ctx:confirm` fragt dbcc vor jedem der beiden Statements einzeln („archive-logs will run on doc:“ plus Statement, Platzhalter `?` statt Wert). Im Test wurde das `INSERT` bejaht und das `DELETE` verneint: Der Befehl endete mit „archive-logs: cancelled by user“, die kopierten Zeilen standen danach in beiden Tabellen – deshalb die gemeinsame Frage.
+In der UI erscheint ein Dialog mit diesem Text und „Yes“/„No“. **Ohne** das `ctx:confirm` fragt dbcc vor jedem der beiden Statements einzeln („archive-logs will run on doc:“ plus Statement und darunter „with parameters:“ mit den gebundenen Werten). Im Test wurde das `INSERT` bejaht und das `DELETE` verneint: Der Befehl endete mit „archive-logs: cancelled by user“, die kopierten Zeilen standen danach in beiden Tabellen – deshalb die gemeinsame Frage.
 
 #### e) Dialektabhängig: `server`
 

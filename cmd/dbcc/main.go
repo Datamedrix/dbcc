@@ -50,7 +50,11 @@ func run() int {
 	env := &app.Env{Opts: opts, Config: cfg, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Prompt: app.TTYPrompter}
 	ctx := context.Background()
 	if opts.ExportCommands != "" {
-		return app.ExitCode(app.ExportCommands(opts.ExportCommands, os.Stderr))
+		err := app.ExportCommands(opts.ExportCommands, os.Stderr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "dbcc:", err)
+		}
+		return app.ExitCode(err)
 	}
 	if opts.Headless(os.Stdin) {
 		err := app.RunHeadless(ctx, env)

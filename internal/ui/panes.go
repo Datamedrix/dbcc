@@ -206,10 +206,14 @@ func (l *MessageLog) Add(m exec.Message) {
 		fmt.Fprintf(&b, " [gray](%s)[-]", FormatDuration(m.Duration))
 	}
 	if m.Info != "" {
-		if m.Stmt != "" {
-			b.WriteString("\n         ")
+		if m.Stmt != "" || m.Err != nil {
+			// below the statement or error, indented, one log line per line
+			for _, l := range strings.Split(strings.TrimRight(m.Info, "\n"), "\n") {
+				b.WriteString("\n         [gray]" + tview.Escape(l) + "[-]")
+			}
+		} else {
+			b.WriteString(tview.Escape(m.Info))
 		}
-		b.WriteString(tview.Escape(m.Info))
 	}
 	if m.ImplicitCommit {
 		b.WriteString("\n         [yellow]note: this statement committed the open transaction implicitly[-]")

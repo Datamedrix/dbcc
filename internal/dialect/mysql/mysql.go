@@ -126,7 +126,11 @@ func (m *MySQL) ListObjects(ctx context.Context, c dialect.Conn, at meta.Path, k
 			if err := rows.Scan(&name, &typ, &comment); err != nil {
 				return err
 			}
-			out = append(out, meta.Object{Name: name, Kind: kindOf(typ), Comment: comment})
+			kind := kindOf(typ)
+			if kind == meta.KindView && comment == "VIEW" {
+				comment = "" // information_schema.TABLES reports "VIEW" as the comment of every view
+			}
+			out = append(out, meta.Object{Name: name, Kind: kind, Comment: comment})
 		}
 		return rows.Err()
 	}

@@ -19,6 +19,7 @@ import (
 	"dbcc/internal/exec"
 	"dbcc/internal/history"
 	"dbcc/internal/meta"
+	"dbcc/internal/script"
 	"dbcc/internal/session"
 	"dbcc/internal/ui/complete"
 	"dbcc/internal/ui/form"
@@ -361,4 +362,15 @@ func (a *App) wireWhereCompletion(in *tview.InputField) {
 		}
 		return ev
 	})
+}
+
+// commandErrorMessage builds the message-log entry of a failed command;
+// the Lua stack trace of a script error is shown below the error.
+func commandErrorMessage(err error) exec.Message {
+	m := exec.Message{Err: err}
+	var ce *script.CommandError
+	if errors.As(err, &ce) && strings.TrimSpace(ce.Trace) != "" {
+		m.Info = "Lua stack:\n" + strings.TrimSpace(ce.Trace)
+	}
+	return m
 }
