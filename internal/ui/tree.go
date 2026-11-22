@@ -80,6 +80,20 @@ func NewTree(ws *session.Workspace, theme *Theme, async, queue func(func())) *Tr
 	return t
 }
 
+// selectedStyle is the highlight of the selected node: black on white,
+// independent of the node's own color. tview's TreeNode.SetColor would
+// otherwise use the text color as the highlight background, which leaves
+// default-colored and dimmed nodes unreadable when selected.
+var selectedStyle = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite)
+
+// Draw applies the selection highlight to the current node, then draws.
+func (t *Tree) Draw(screen tcell.Screen) {
+	if n := t.GetCurrentNode(); n != nil {
+		n.SetSelectedTextStyle(selectedStyle)
+	}
+	t.TreeView.Draw(screen)
+}
+
 // Refresh rebuilds the tree for the current connection (A18: the tree
 // shows the current connection only and switches with it).
 func (t *Tree) Refresh() {
