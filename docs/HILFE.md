@@ -374,7 +374,7 @@ Kommentare auf derselben Zeile wie das vorige Trennzeichen (`SELECT 1; -- Notiz`
 
 ### Abbrechen
 
-`F8` bricht das laufende Statement ab: MySQL/MariaDB senden `KILL QUERY <id>` über die Hilfsverbindung, PostgreSQL und SQL Server brechen über den Treiber ab (Cancel-Request bzw. TDS-Attention). Die Hauptsitzung und ihre Transaktion bleiben in beiden Fällen nutzbar. `F8` unterbricht außerdem den Lua-Code eines laufenden Befehls, auch eine Endlosschleife in einem Skript („<befehl>: interrupted“), siehe [Sandbox](#sandbox). Auf einem folgenden Ergebnis (`tail -f`) beendet `F8` außerdem das Folgen.
+`F8` bricht das laufende Statement ab: MySQL/MariaDB senden `KILL QUERY <id>` über die Hilfsverbindung, PostgreSQL und SQL Server brechen über den Treiber ab (Cancel-Request bzw. TDS-Attention). Die Hauptsitzung und ihre Transaktion bleiben in beiden Fällen nutzbar. Auch den Lua-Code eines laufenden Befehls unterbricht `F8`, einschließlich eine Endlosschleife in einem Skript („<befehl>: interrupted“), siehe [Sandbox](#sandbox). Auf einem folgenden Ergebnis (`tail -f`) beendet `F8` außerdem das Folgen.
 
 ### Open-Cursor-Regel
 
