@@ -134,8 +134,15 @@ func (a *App) Run(ctx context.Context) error {
 	scr := a.opts.Screen
 	if scr == nil {
 		var err error
-		if scr, err = tcell.NewScreen(); err != nil {
-			return err
+		// The filter keeps Alt+Shift+X & co. from freezing the input
+		// (see filterTty); without a /dev/tty fall back to the default.
+		if tty, terr := tcell.NewDevTty(); terr == nil {
+			scr, err = tcell.NewTerminfoScreenFromTty(newFilterTty(tty))
+		}
+		if scr == nil {
+			if scr, err = tcell.NewScreen(); err != nil {
+				return err
+			}
 		}
 	}
 	a.screen = scr
