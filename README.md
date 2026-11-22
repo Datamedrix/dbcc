@@ -389,7 +389,7 @@ Comments on the line of the previous delimiter (`SELECT 1; -- note`) belong to t
 
 ### Cancelling
 
-`F8` cancels the running statement: MySQL/MariaDB send `KILL QUERY <id>` on the auxiliary connection; PostgreSQL and SQL Server cancel through the driver (cancel request, TDS attention). In both cases the main session and its transaction stay usable. On a following result (`tail -f`) `F8` also stops following.
+`F8` cancels the running statement: MySQL/MariaDB send `KILL QUERY <id>` on the auxiliary connection; PostgreSQL and SQL Server cancel through the driver (cancel request, TDS attention). In both cases the main session and its transaction stay usable. `F8` also interrupts the Lua code of a running command, including an endless loop in a script ("<command>: interrupted"), see [Sandbox](#sandbox). On a following result (`tail -f`) `F8` also stops following.
 
 ### Open-cursor rule
 
