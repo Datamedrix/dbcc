@@ -139,6 +139,12 @@ func (p *Postgres) connConfig(prof *config.Profile, cred config.Credentials, dat
 	if err != nil {
 		return nil, err
 	}
+	if cred.Dial != nil {
+		// SSH tunnel (A27): dial through it, cancel requests included; the
+		// host name is resolved on the far side, not locally.
+		cfg.DialFunc = pgconn.DialFunc(cred.Dial)
+		cfg.LookupFunc = func(_ context.Context, host string) ([]string, error) { return []string{host}, nil }
+	}
 	if _, ok := kv["default_query_exec_mode"]; !ok {
 		cfg.DefaultQueryExecMode = pgx.QueryExecModeDescribeExec
 	}

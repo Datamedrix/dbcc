@@ -148,6 +148,21 @@ type ScriptError struct{ Err error }
 func (e *ScriptError) Error() string { return e.Err.Error() }
 func (e *ScriptError) Unwrap() error { return e.Err }
 
+// TTYConfirmHostKey asks about an unknown SSH host key on the controlling
+// terminal, like ssh: only "yes" trusts the host. Without a terminal the
+// key is rejected. --yes does not answer this question.
+func TTYConfirmHostKey(msg string) (bool, error) {
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return false, nil
+	}
+	defer tty.Close()
+	fmt.Fprint(tty, msg, " (yes/no) ")
+	var answer string
+	fmt.Fscanln(tty, &answer)
+	return strings.EqualFold(strings.TrimSpace(answer), "yes"), nil
+}
+
 // TTYPrompter reads a password from the controlling terminal without echo.
 func TTYPrompter(prompt string) (string, error) {
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)

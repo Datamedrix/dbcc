@@ -32,7 +32,11 @@ type credFile struct {
 }
 
 type storedCred struct {
-	Password string `toml:"password"`
+	Password    *string `toml:"password,omitempty"`     // nil: no database password stored
+	SSHPassword string  `toml:"ssh_password,omitempty"` // SSH password or key passphrase (A27)
+	// SSHSecretKind says which question SSHPassword answers: "password"
+	// (the target's SSH password) or "passphrase:<key file>".
+	SSHSecretKind string `toml:"ssh_secret_kind,omitempty"`
 }
 
 func readCreds(path string) (credFile, error) {
@@ -86,7 +90,10 @@ func StoredPassword(profile string) (string, bool, error) {
 		return "", false, err
 	}
 	c, ok := cf.Profiles[profile]
-	return c.Password, ok, nil
+	if !ok || c.Password == nil {
+		return "", false, nil
+	}
+	return *c.Password, true, nil
 }
 
 // StorePassword saves the password of a profile in the credential store.
@@ -98,12 +105,37 @@ func StorePassword(profile, password string) error {
 	if err != nil {
 		return err
 	}
-	cf.Profiles[profile] = storedCred{Password: password}
+	c := cf.Profiles[profile]
+	c.Password = &password
+	cf.Profiles[profile] = c
 	return writeCreds(path, cf)
 }
 
-// DeletePassword removes a profile's stored password (no error if absent).
+// DeletePassword removes a profile's stored database password (no error
+// if absent); a stored SSH secret stays.
 func DeletePassword(profile string) error {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	path := CredentialsPath()
+	cf, err := readCreds(path)
+	if err != nil {
+		return err
+	}
+	c, ok := cf.Profiles[profile]
+	if !ok || c.Password == nil {
+		return nil
+	}
+	c.Password = nil
+	if c.SSHPassword == "" {
+		delete(cf.Profiles, profile)
+	} else {
+		cf.Profiles[profile] = c
+	}
+	return writeCreds(path, cf)
+}
+
+// deleteCredentials removes everything stored for a profile.
+func deleteCredentials(profile string) error {
 	storeMu.Lock()
 	defer storeMu.Unlock()
 	path := CredentialsPath()
@@ -115,6 +147,49 @@ func DeletePassword(profile string) error {
 		return nil
 	}
 	delete(cf.Profiles, profile)
+	return writeCreds(path, cf)
+}
+
+// StoredSSHSecret returns the stored SSH password or key passphrase of a
+// profile (A27) and which question it answers (see storedCred).
+func StoredSSHSecret(profile string) (kind, secret string, ok bool, err error) {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	cf, err := readCreds(CredentialsPath())
+	if err != nil {
+		return "", "", false, err
+	}
+	c, ok := cf.Profiles[profile]
+	if !ok || c.SSHPassword == "" || c.SSHSecretKind == "" {
+		return "", "", false, nil
+	}
+	return c.SSHSecretKind, c.SSHPassword, true, nil
+}
+
+// StoreSSHSecret saves the SSH password or key passphrase of a profile
+// with its kind ("password" or "passphrase:<key file>"); an empty secret
+// removes it.
+func StoreSSHSecret(profile, kind, secret string) error {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	path := CredentialsPath()
+	cf, err := readCreds(path)
+	if err != nil {
+		return err
+	}
+	c, ok := cf.Profiles[profile]
+	if !ok && secret == "" {
+		return nil
+	}
+	c.SSHPassword, c.SSHSecretKind = secret, kind
+	if secret == "" {
+		c.SSHSecretKind = ""
+	}
+	if c.Password == nil && c.SSHPassword == "" {
+		delete(cf.Profiles, profile)
+	} else {
+		cf.Profiles[profile] = c
+	}
 	return writeCreds(path, cf)
 }
 
@@ -186,7 +261,7 @@ func DeleteProfile(c *Config, path, name string) error {
 	if c != nil {
 		delete(c.Profiles, name)
 	}
-	return DeletePassword(name)
+	return deleteCredentials(name)
 }
 
 // profileTOML returns the profile as an ordered set of TOML keys, leaving
@@ -222,6 +297,19 @@ func profileTOML(p *Profile) map[string]any {
 	}
 	if len(p.Params) > 0 {
 		m["params"] = p.Params
+	}
+	if s := p.SSH; s != nil {
+		t := map[string]any{}
+		for k, v := range map[string]string{"alias": s.Alias, "host": s.Host, "user": s.User,
+			"identity_file": s.IdentityFile, "proxy_jump": s.ProxyJump, "password": s.Password} {
+			if v != "" {
+				t[k] = v
+			}
+		}
+		if s.Port != 0 {
+			t["port"] = s.Port
+		}
+		m["ssh"] = t
 	}
 	return m
 }

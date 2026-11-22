@@ -18,6 +18,7 @@ import (
 	"dbcc/internal/exec"
 	"dbcc/internal/meta"
 	"dbcc/internal/session"
+	"dbcc/internal/sshtunnel"
 )
 
 var drivers = []struct{ name, label string }{
@@ -176,6 +177,9 @@ func describeProfile(p *config.Profile) string {
 	if len(flags) > 0 {
 		s += "  (" + strings.Join(flags, ", ") + ")"
 	}
+	if p.SSH != nil {
+		s += "  via SSH " + p.SSH.Name()
+	}
 	return s
 }
 
@@ -225,6 +229,7 @@ func (a *App) editProfile(orig *config.Profile, copy bool, saved func(name strin
 	}
 
 	f := tview.NewForm()
+	a.profileForm = f
 	f.SetItemPadding(0).SetButtonsAlign(tview.AlignLeft)
 	f.SetFieldBackgroundColor(tcell.ColorDefault).SetLabelColor(a.theme.Accent)
 	f.SetBorder(true).SetBorderColor(a.theme.BorderFocus).SetBorderPadding(0, 0, 1, 1)
@@ -294,11 +299,105 @@ func (a *App) editProfile(orig *config.Profile, copy bool, saved func(name strin
 			}
 		}
 	})
-	for _, it := range []tview.FormItem{name, driver, host, port, socket, user, pw, pwSource, env, database, readOnly, autocommit, confirm, paramsField} {
+	// SSH tunnel (A27): a Host of ~/.ssh/config or manual data.
+	sshCfg, sshCfgErr := sshtunnel.LoadConfig(session.SSHConfigPath())
+	var aliases []string
+	if sshCfgErr == nil {
+		aliases = sshCfg.Hosts()
+	}
+	tunnelLabels := []string{"none (direct connection)", "manual (enter below)"}
+	for _, al := range aliases {
+		lbl := al
+		if t, err := sshCfg.Resolve(al); err == nil {
+			who := t.Addr()
+			if t.User != "" {
+				who = t.User + "@" + who
+			}
+			lbl += "  (" + who + ")"
+		}
+		tunnelLabels = append(tunnelLabels, lbl)
+	}
+	tunnelIdx := 0
+	sp := p.SSH
+	if sp == nil {
+		sp = &config.SSH{}
+	} else {
+		tunnelIdx = 1
+		for i, al := range aliases {
+			if al == sp.Alias {
+				tunnelIdx = i + 2
+			}
+		}
+	}
+	tunnel := tview.NewDropDown().SetLabel("SSH tunnel").SetOptions(tunnelLabels, nil).SetCurrentOption(tunnelIdx)
+	sshHost := tview.NewInputField().SetLabel("SSH host").SetText(sp.Host).SetFieldWidth(w)
+	sshPort := tview.NewInputField().SetLabel("SSH port").SetFieldWidth(8).SetAcceptanceFunc(tview.InputFieldInteger).
+		SetPlaceholder("22").SetPlaceholderTextColor(tcell.ColorGray)
+	if sp.Port != 0 {
+		sshPort.SetText(strconv.Itoa(sp.Port))
+	}
+	sshUser := tview.NewInputField().SetLabel("SSH user").SetText(sp.User).SetFieldWidth(w)
+	sshKey := tview.NewInputField().SetLabel("SSH key file").SetText(sp.IdentityFile).SetFieldWidth(w).
+		SetPlaceholder("empty: ssh-agent, ~/.ssh/id_*").SetPlaceholderTextColor(tcell.ColorGray)
+	sshJump := tview.NewInputField().SetLabel("Jump hosts").SetText(sp.ProxyJump).SetFieldWidth(w).
+		SetPlaceholder("e.g. bastion or user@host:port, …").SetPlaceholderTextColor(tcell.ColorGray)
+	sshSecretChoices := []struct{ source, label string }{
+		{"prompt", "ask when needed"},
+		{"stored", "save after the first login"},
+	}
+	sshSecretIdx := 0
+	if sp.Password == "stored" {
+		sshSecretIdx = 1
+	}
+	sshSecret := tview.NewDropDown().SetLabel("SSH password").
+		SetOptions([]string{sshSecretChoices[0].label, sshSecretChoices[1].label}, nil).SetCurrentOption(sshSecretIdx)
+	sshFields := []tview.FormItem{sshHost, sshPort, sshUser, sshKey, sshJump, sshSecret}
+	setTunnel := func(on bool) {
+		for _, x := range sshFields {
+			x.SetDisabled(!on)
+		}
+	}
+	setTunnel(tunnelIdx > 0)
+
+	for _, it := range []tview.FormItem{name, driver, host, port, socket, user, pw, pwSource, env, database,
+		tunnel, sshHost, sshPort, sshUser, sshKey, sshJump, sshSecret,
+		readOnly, autocommit, confirm, paramsField} {
 		f.AddFormItem(it)
 	}
 	status := tview.NewTextView().SetDynamicColors(true).SetWrap(true)
 	status.SetText("[gray]Tab/Shift+Tab move · Enter on a drop-down opens it · Esc cancels[-]")
+	if sshCfgErr != nil {
+		status.SetText("[yellow]" + tview.Escape(session.SSHConfigPath()+": "+sshCfgErr.Error()) + "[-]")
+	}
+	// Choosing a Host of ~/.ssh/config fills in its data (set after the
+	// initial SetCurrentOption, so editing keeps the saved values).
+	tunnel.SetSelectedFunc(func(_ string, i int) {
+		setTunnel(i > 0)
+		if i < 2 {
+			if i == 1 {
+				status.SetText("[gray]Host and Port above: the database as seen from the SSH server (often 127.0.0.1)[-]")
+			}
+			return
+		}
+		al := aliases[i-2]
+		t, err := sshCfg.Resolve(al)
+		if err != nil {
+			status.SetText("[red::b]" + tview.Escape(err.Error()) + "[-::-]")
+			return
+		}
+		sshHost.SetText(t.Host)
+		sshPort.SetText("")
+		if t.Port != 0 && t.Port != 22 {
+			sshPort.SetText(strconv.Itoa(t.Port))
+		}
+		sshUser.SetText(t.User)
+		sshKey.SetText("")
+		if len(t.IdentityFiles) > 0 {
+			sshKey.SetText(homeTilde(t.IdentityFiles[0]))
+		}
+		sshJump.SetText(sshCfg.Get(al, "proxyjump"))
+		status.SetText("[gray]taken from ~/.ssh/config (" + tview.Escape(al) + "). Host and Port above: the database as seen from the SSH server (often 127.0.0.1)[-]")
+	})
 
 	// collect builds the profile and the password from the fields.
 	collect := func() (*config.Profile, string, error) {
@@ -343,6 +442,40 @@ func (a *App) editProfile(orig *config.Profile, copy bool, saved func(name strin
 			}
 			np.Params[strings.TrimSpace(k)] = strings.TrimSpace(v)
 		}
+		if ti, _ := tunnel.GetCurrentOption(); ti > 0 {
+			si, _ := sshSecret.GetCurrentOption()
+			np.SSH = &config.SSH{
+				Host:         strings.TrimSpace(sshHost.GetText()),
+				User:         strings.TrimSpace(sshUser.GetText()),
+				IdentityFile: strings.TrimSpace(sshKey.GetText()),
+				ProxyJump:    strings.TrimSpace(sshJump.GetText()),
+				Password:     sshSecretChoices[max(si, 0)].source,
+			}
+			if ti >= 2 {
+				np.SSH.Alias = aliases[ti-2]
+			}
+			if v := strings.TrimSpace(sshPort.GetText()); v != "" {
+				np.SSH.Port, _ = strconv.Atoi(v)
+			}
+			// "user@host:port" typed into the host field
+			if u, hh, pt, err := sshtunnel.SplitDest(np.SSH.Host); np.SSH.Host != "" && err == nil {
+				np.SSH.Host = hh
+				if u != "" && np.SSH.User == "" {
+					np.SSH.User = u
+				}
+				if pt != 0 && np.SSH.Port == 0 {
+					np.SSH.Port = pt
+				}
+			} else if np.SSH.Host != "" {
+				return nil, "", err
+			}
+			if np.SSH.Alias == "" && np.SSH.Host == "" {
+				return nil, "", fmt.Errorf("enter the SSH host (or choose a Host from ~/.ssh/config)")
+			}
+			if np.Socket != "" {
+				return nil, "", fmt.Errorf("a socket cannot be reached through SSH: use host and port")
+			}
+		}
 		if !config.ValidProfileName(np.Name) {
 			return nil, "", fmt.Errorf("name: use letters, digits, '-', '_' or '.' (it becomes the path /%s)", np.Name)
 		}
@@ -361,7 +494,9 @@ func (a *App) editProfile(orig *config.Profile, copy bool, saved func(name strin
 		return np, password, nil
 	}
 	showErr := func(err error) { status.SetText("[red::b]" + tview.Escape(err.Error()) + "[-::-]") }
-	close := func() { a.closeModal("profile-edit", prev) }
+	// A running test (SSH login, prompts) ends when the editor closes.
+	testCtx, cancelTests := context.WithCancel(context.Background())
+	close := func() { cancelTests(); a.closeModal("profile-edit", prev) }
 
 	// credentials for test and save: typed password wins; otherwise the
 	// configured source (prompt is skipped for the test).
@@ -371,6 +506,20 @@ func (a *App) editProfile(orig *config.Profile, copy bool, saved func(name strin
 		}
 		return config.ResolveCredentials(np, nil)
 	}
+	// testedSig identifies the field values of the last successful test;
+	// sshSecret is the SSH password or passphrase entered in it.
+	var testedSig string
+	var testedSSH struct{ kind, secret string } // SSH secret entered for the target in the last test
+	// (by value: the profile holds pointers, which differ on every collect)
+	signature := func(np *config.Profile, password string) string {
+		v := *np
+		v.SSH, v.Autocommit = nil, nil
+		sig := fmt.Sprintf("%+v|%v|%s", v, np.IsAutocommit(), password)
+		if np.SSH != nil {
+			sig += fmt.Sprintf("|%+v", *np.SSH)
+		}
+		return sig
+	}
 	test := func(then func(ok bool)) {
 		np, password, err := collect()
 		if err != nil {
@@ -378,14 +527,24 @@ func (a *App) editProfile(orig *config.Profile, copy bool, saved func(name strin
 			return
 		}
 		status.SetText("[yellow]connecting…[-]")
+		if np.SSH != nil {
+			status.SetText("[yellow]connecting through SSH " + tview.Escape(np.SSH.Name()) + "…[-]")
+		}
+		sig := signature(np, password)
 		go func() {
 			cred, err := credsFor(np, password)
-			var version string
+			var version, sshKind, sshSecret string
 			if err == nil {
-				ctx, cancel := context.WithTimeout(context.Background(), 15e9)
-				defer cancel()
+				// The test never stores anything: the SSH secret the
+				// target asked for is kept for Save.
+				hooks := session.Hooks{
+					Prompt:         a.promptPassword,
+					ConfirmHostKey: a.confirmHostKey,
+					NoStore:        true,
+					SecretUsed:     func(kind, secret string) { sshKind, sshSecret = kind, secret },
+				}
 				var s *session.Session
-				if s, err = session.Open(ctx, np, cred, ""); err == nil {
+				if s, err = session.OpenWith(testCtx, np, cred, "", hooks); err == nil {
 					version = s.Dialect.Name()
 					s.Close()
 				}
@@ -398,18 +557,44 @@ func (a *App) editProfile(orig *config.Profile, copy bool, saved func(name strin
 					}
 					return
 				}
-				status.SetText("[green::b]Connection works[-::-] (" + version + ")")
+				testedSig = sig
+				testedSSH.kind, testedSSH.secret = sshKind, sshSecret
+				msg := "[green::b]Connection works[-::-] (" + version + ")"
+				if np.SSH != nil {
+					msg += " through SSH " + tview.Escape(np.SSH.Name())
+				}
+				status.SetText(msg)
 				if then != nil {
 					then(true)
 				}
 			})
 		}()
 	}
-	save := func(connect bool) {
+	var save func(connect bool)
+	save = func(connect bool) {
 		np, password, err := collect()
 		if err != nil {
 			showErr(err)
 			return
+		}
+		// An SSH tunnel is taken over only when the connection works
+		// (owner request 2026-11-22): test first.
+		if np.SSH != nil && signature(np, password) != testedSig {
+			test(func(ok bool) {
+				if ok {
+					save(connect)
+				}
+			})
+			return
+		}
+		var sshKind, sshSecretToStore string
+		if np.SSH != nil && np.SSH.Password == "stored" {
+			sshKind, sshSecretToStore = testedSSH.kind, testedSSH.secret
+			if sshSecretToStore == "" && editing && sameSSHTarget(orig.SSH, np.SSH) {
+				// keep the stored one (also on rename), but only for the
+				// same SSH server, user and key
+				sshKind, sshSecretToStore, _, _ = config.StoredSSHSecret(orig.Name)
+			}
 		}
 		path := a.configPath()
 		if editing && np.Name != orig.Name {
@@ -430,6 +615,10 @@ func (a *App) editProfile(orig *config.Profile, copy bool, saved func(name strin
 			}
 		case np.Password != "stored":
 			config.DeletePassword(np.Name) // the user chose not to keep it
+		}
+		if err := config.StoreSSHSecret(np.Name, sshKind, sshSecretToStore); err != nil { // "" removes it
+			showErr(err)
+			return
 		}
 		if s := a.ws.Sessions()[np.Name]; s != nil {
 			a.log.Add(exec.Message{Info: "connection " + np.Name + " saved; changes apply after reconnecting (F2, x)"})
@@ -453,6 +642,24 @@ func (a *App) editProfile(orig *config.Profile, copy bool, saved func(name strin
 
 	box := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(f, 0, 1, true).AddItem(status, 2, 0, false)
 	_, _, _, h := a.pages.GetRect()
-	a.modal("profile-edit", box, 72, min(26, max(h-2, 20)))
+	a.modal("profile-edit", box, 76, min(34, max(h-2, 20)))
 	a.tv.SetFocus(f)
+}
+
+// homeTilde shows a path below the home directory as ~/….
+func homeTilde(p string) string {
+	if home := config.HomeDir(); home != "" && strings.HasPrefix(p, home+"/") {
+		return "~" + p[len(home):]
+	}
+	return p
+}
+
+// sameSSHTarget reports whether two tunnels log in to the same server as
+// the same user with the same key (a stored SSH secret stays valid).
+func sameSSHTarget(a, b *config.SSH) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Alias == b.Alias && a.Host == b.Host && a.Port == b.Port && a.User == b.User &&
+		a.IdentityFile == b.IdentityFile && a.ProxyJump == b.ProxyJump
 }

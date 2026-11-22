@@ -27,6 +27,9 @@ type Env struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Prompt config.Prompter
+	// ConfirmHostKey asks about an unknown SSH host key (A27); nil rejects
+	// unknown keys.
+	ConfirmHostKey func(msg string) (bool, error)
 }
 
 // headlessSink prints results to stdout and messages to stderr.

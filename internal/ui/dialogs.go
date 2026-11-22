@@ -236,8 +236,14 @@ func (a *App) closeModal(name string, focus tview.Primitive) {
 // modalButtons shows a message with buttons; done receives the index
 // (Esc = last button).
 func (a *App) modalButtons(name, msg string, buttons []string, done func(int)) {
+	a.modalButtonsFocus(name, msg, buttons, 0, done)
+}
+
+// modalButtonsFocus is modalButtons with the focus on button focus. Esc
+// chooses the last button.
+func (a *App) modalButtonsFocus(name, msg string, buttons []string, focus int, done func(int)) {
 	prev := a.tv.GetFocus()
-	m := tview.NewModal().SetText(msg).AddButtons(buttons)
+	m := tview.NewModal().SetText(msg).AddButtons(buttons).SetFocus(focus)
 	m.SetDoneFunc(func(i int, _ string) {
 		a.closeModal(name, prev)
 		if i < 0 {
@@ -350,7 +356,9 @@ func (a *App) promptPassword(prompt string) (string, error) {
 			a.closeModal("password", prev)
 			ch <- result{in.GetText(), k == tcell.KeyEnter}
 		})
-		a.modal("password", in, 60, 3)
+		// Wide enough for a long prompt (key file paths) plus the input.
+		_, _, sw, _ := a.pages.GetRect()
+		a.modal("password", in, min(max(60, len([]rune(prompt))+24), max(sw-4, 60)), 3)
 	})
 	select {
 	case r := <-ch:
@@ -360,6 +368,66 @@ func (a *App) promptPassword(prompt string) (string, error) {
 		return r.pw, nil
 	case <-a.quit:
 		return "", script.ErrNoUI
+	}
+}
+
+// confirmHostKey asks whether to trust an unknown SSH host key (A27). It
+// runs on the worker or a background goroutine, never on the UI goroutine.
+// The safe answer has the focus: Enter alone does not trust a host.
+func (a *App) confirmHostKey(msg string) (bool, error) {
+	select {
+	case <-a.splashDone:
+	case <-a.quit:
+		return false, script.ErrNoUI
+	}
+	ch := make(chan bool, 1)
+	a.tv.QueueUpdateDraw(func() {
+		prev := a.tv.GetFocus()
+		answer := func(yes bool) {
+			a.closeModal("hostkey", prev)
+			ch <- yes
+		}
+		// Wide enough that fingerprint and path are not broken up.
+		text := tview.NewTextView().SetWrap(true).SetText(msg)
+		buttons := tview.NewForm().SetButtonsAlign(tview.AlignCenter)
+		buttons.AddButton("Trust and connect", func() { answer(true) })
+		buttons.AddButton("Cancel", func() { answer(false) })
+		buttons.SetCancelFunc(func() { answer(false) })
+		buttons.SetFocus(1) // the safe answer: Enter alone trusts nothing
+		// Left/Right/Tab move between the two buttons without wrapping: no
+		// key sequence from Cancel reaches "Trust" by going "forward".
+		buttons.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
+			_, b := buttons.GetFocusedItemIndex()
+			switch ev.Key() {
+			case tcell.KeyLeft, tcell.KeyBacktab:
+				if b == 0 {
+					return nil
+				}
+				return tcell.NewEventKey(tcell.KeyBacktab, 0, tcell.ModNone)
+			case tcell.KeyRight, tcell.KeyTab:
+				if b == 1 {
+					return nil
+				}
+				return tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)
+			}
+			return ev
+		})
+		box := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(text, 0, 1, false).AddItem(buttons, 3, 0, true)
+		box.SetBorder(true).SetTitle(" Unknown SSH host key ").SetBorderColor(a.theme.BorderFocus).SetBorderPadding(1, 0, 2, 2)
+		_, _, w, _ := a.pages.GetRect()
+		width := min(max(w-4, 40), 100)
+		lines := 0
+		for _, l := range strings.Split(msg, "\n") {
+			lines += 1 + len(l)/(width-6)
+		}
+		a.modal("hostkey", box, width, lines+6)
+		a.tv.SetFocus(buttons)
+	})
+	select {
+	case v := <-ch:
+		return v, nil
+	case <-a.quit:
+		return false, script.ErrNoUI
 	}
 }
 

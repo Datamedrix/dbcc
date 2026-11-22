@@ -56,6 +56,9 @@ func (m *MySQL) Open(ctx context.Context, p *config.Profile, cred config.Credent
 	cfg.MultiStatements = false // the tool splits statements itself (spec 5)
 	cfg.AllowNativePasswords = true
 	cfg.Timeout = 10 * time.Second
+	if cred.Dial != nil {
+		cfg.DialFunc = cred.Dial // SSH tunnel (A27)
+	}
 	if cfg.Params == nil {
 		cfg.Params = map[string]string{}
 	}

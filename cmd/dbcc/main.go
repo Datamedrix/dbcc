@@ -47,7 +47,7 @@ func run() int {
 	for _, w := range cfg.Warnings {
 		fmt.Fprintln(os.Stderr, "dbcc: warning:", w)
 	}
-	env := &app.Env{Opts: opts, Config: cfg, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Prompt: app.TTYPrompter}
+	env := &app.Env{Opts: opts, Config: cfg, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Prompt: app.TTYPrompter, ConfirmHostKey: app.TTYConfirmHostKey}
 	ctx := context.Background()
 	if opts.ExportCommands != "" {
 		err := app.ExportCommands(opts.ExportCommands, os.Stderr)

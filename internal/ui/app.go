@@ -45,14 +45,15 @@ type Options struct {
 
 // App is the full-screen terminal UI.
 type App struct {
-	opts   Options
-	cfg    *config.Config
-	screen tcell.Screen
-	tv     *tview.Application
-	pages  *tview.Pages
-	theme  *Theme
-	keymap *Keymap
-	fkeys  FKeyTranslator
+	profileForm *tview.Form // the open connection editor (F2), for tests
+	opts        Options
+	cfg         *config.Config
+	screen      tcell.Screen
+	tv          *tview.Application
+	pages       *tview.Pages
+	theme       *Theme
+	keymap      *Keymap
+	fkeys       FKeyTranslator
 
 	ws  *session.Workspace
 	reg *command.Registry
@@ -126,6 +127,7 @@ func New(opts Options) (*App, error) {
 	}
 	a.ws = session.NewWorkspace(cfg, a.promptPassword)
 	a.ws.BeforeDatabaseChange = a.txnDecision
+	a.ws.ConfirmHostKey = a.confirmHostKey
 	return a, nil
 }
 

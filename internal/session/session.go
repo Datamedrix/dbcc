@@ -36,6 +36,7 @@ type Session struct {
 	auxByDB    map[string]*sql.DB // aux pools for other databases (PostgreSQL)
 	stmtCancel context.CancelFunc
 	done       chan struct{} // closed by Close (see Done)
+	tunnel     io.Closer     // SSH tunnel (A27), closed after the connections
 }
 
 // Done returns a channel that is closed when the session is closed.
@@ -52,6 +53,11 @@ func (s *Session) Done() <-chan struct{} {
 
 // Open connects a profile. database overrides the profile's database if set.
 func Open(ctx context.Context, p *config.Profile, cred config.Credentials, database string) (*Session, error) {
+	if p.SSH != nil && cred.Dial == nil {
+		// Never connect directly (and send the password) to an address
+		// that is meant to be seen from the SSH server.
+		return nil, fmt.Errorf("profile %q uses an SSH tunnel: open it with OpenWith", p.Name)
+	}
 	d, err := dialect.For(p.Driver)
 	if err != nil {
 		return nil, err
@@ -350,5 +356,12 @@ func (s *Session) Close() error {
 	s.mu.Unlock()
 	s.CloseCursor()
 	s.snapshot().close()
+	s.mu.Lock()
+	t := s.tunnel
+	s.tunnel = nil
+	s.mu.Unlock()
+	if t != nil {
+		t.Close()
+	}
 	return nil
 }

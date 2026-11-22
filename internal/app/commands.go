@@ -35,6 +35,7 @@ func newHeadless(env *Env) *headless {
 		sink:    &headlessSink{env: env},
 		runners: map[*session.Session]*exec.Runner{},
 	}
+	h.ws.ConfirmHostKey = env.ConfirmHostKey
 	h.hist = OpenHistory(env.Stderr)
 	return h
 }

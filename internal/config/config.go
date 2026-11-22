@@ -153,6 +153,22 @@ func validateProfile(p *Profile) error {
 	if p.Port == 0 && p.Socket == "" {
 		p.Port = def
 	}
+	if s := p.SSH; s != nil {
+		if s.Alias == "" && s.Host == "" {
+			return fmt.Errorf("profile %q: [ssh] needs alias (a Host from ~/.ssh/config) or host", p.Name)
+		}
+		if p.Socket != "" {
+			return fmt.Errorf("profile %q: a socket cannot be reached through SSH; use host and port", p.Name)
+		}
+		switch s.Password {
+		case "", "prompt", "stored":
+		default:
+			return fmt.Errorf("profile %q: ssh.password must be \"prompt\" or \"stored\" (secrets never go into the profile file)", p.Name)
+		}
+		if s.Port < 0 || s.Port > 65535 {
+			return fmt.Errorf("profile %q: ssh.port %d out of range", p.Name, s.Port)
+		}
+	}
 	return nil
 }
 

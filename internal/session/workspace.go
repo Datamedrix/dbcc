@@ -21,6 +21,9 @@ type Workspace struct {
 	// session with an open transaction (spec 12: commit, roll back or
 	// stay). Returning an error aborts the cd. Nil means "proceed".
 	BeforeDatabaseChange func(s *Session, target string) error
+	// ConfirmHostKey asks whether to trust an unknown SSH host key (A27).
+	// Nil: unknown host keys are rejected.
+	ConfirmHostKey func(msg string) (bool, error)
 
 	mu       sync.Mutex
 	sessions map[string]*Session
@@ -77,7 +80,7 @@ func (w *Workspace) Open(ctx context.Context, name string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err = Open(ctx, p, cred, "")
+	s, err = OpenWith(ctx, p, cred, "", Hooks{Prompt: w.Prompt, ConfirmHostKey: w.ConfirmHostKey})
 	if err != nil {
 		return nil, fmt.Errorf("connect %s: %w", name, err)
 	}

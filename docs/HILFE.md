@@ -42,11 +42,12 @@ dbcc vereint in einem Programm:
 - Ein **Ergebnis-Grid** mit seitenweisem Nachladen, horizontalem Scrollen (nie Zeilenumbruch), Sortieren, drei Filterarten, Pivot-Ansicht, Zellendetail und Kopieren über die Zwischenablage (OSC 52).
 - Ein **Zeilenformular** zum Einfügen und Bearbeiten von Datensätzen mit NULL-Behandlung, Fremdschlüssel-Suchfenster und Zuordnung von Serverfehlern zum betroffenen Feld.
 - Eine **Befehlsschicht, die vollständig in Lua geschrieben ist**. Jeder Befehl ist ein Lua-Skript; eigene Skripte ergänzen oder ersetzen die eingebauten.
+- Einen eingebauten **SSH-Tunnel**: im Verbindungsmanager einen `Host` aus `~/.ssh/config` wählen; Agent, Schlüssel, Passwörter, `ProxyJump` und `known_hosts`-Prüfung wie bei OpenSSH.
 - Einen **Headless-Modus** für Skripte und einzelne Befehle ohne Oberfläche, mit Exit-Code.
 
 Unterstützte Datenbanken: **MySQL**, **MariaDB** (wird beim Verbinden automatisch erkannt), **PostgreSQL** und **Microsoft SQL Server**.
 
-Bewusst nicht enthalten: kein `rm`- oder Drop-Befehl (Löschen nur per SQL), kein Löschen von Zeilen aus dem Grid, kein Vim-Modus, keine `$EDITOR`-Übergabe, kein eingebauter SSH-Tunnel, keine BLOB-Bearbeitung im Formular.
+Bewusst nicht enthalten: kein `rm`- oder Drop-Befehl (Löschen nur per SQL), kein Löschen von Zeilen aus dem Grid, kein Vim-Modus, keine `$EDITOR`-Übergabe, keine BLOB-Bearbeitung im Formular.
 
 ---
 
@@ -167,10 +168,15 @@ Das Formular enthält:
 | Password storage | `save with the connection` (= `stored`, Passwortspeicher), `ask when connecting` (= `prompt`), `environment variable` (= `env:NAME`), `~/.my.cnf` (= `mycnf`), `~/.pgpass` (= `pgpass`). |
 | Env variable | Name der Umgebungsvariable, nur bei „environment variable“. |
 | Default database | Datenbank, auf der die Verbindung landet. |
+| SSH tunnel | `none (direct connection)`, `manual (enter below)` oder ein `Host` aus `~/.ssh/config` (angezeigt mit `user@host:port`; Anfangsbuchstaben tippen springt hin). Die Wahl eines Hosts füllt die folgenden Felder aus der Konfiguration. Siehe [SSH-Tunnel](#ssh-tunnel). |
+| SSH host, SSH port, SSH user | Der SSH-Server (Port Standard 22, Benutzer Standard dein Login-Name). `user@host:port` im Host-Feld wird aufgeteilt. Bei „manual“ wird ein hier eingetippter `Host`-Name aus `~/.ssh/config` wie bei `ssh name` nachgeschlagen (dessen `HostName`, Benutzer, Schlüssel). |
+| SSH key file | Privater Schlüssel, der zuerst probiert wird. Leer: die Schlüssel von `ssh-agent` sowie `~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`. |
+| Jump hosts | `ProxyJump`-Zwischenstationen, durch Kommas getrennt: ein Host aus `~/.ssh/config` oder `user@host:port`. |
+| SSH password | Passwort bzw. Schlüssel-Passphrase, falls nötig: `ask when needed` (= `prompt`) oder `save after the first login` (= `stored`). |
 | Read only, Autocommit, Confirm writes | Siehe [Abschnitt 13](#13-transaktionen-und-sicherheit). |
 | Driver options | Treiberparameter als `key=value, key=value`, z. B. `tls=skip-verify` oder `sslmode=require`. Siehe [Abschnitt 15](#15-konfiguration). |
 
-Schaltflächen: **Test** (baut eine Probeverbindung auf und meldet „Connection works (mysql)“ bzw. den Fehler), **Save**, **Save & connect**, **Cancel**. `Tab`/`Shift+Tab` bewegen zwischen den Feldern, `Enter` auf einer Auswahlliste öffnet sie, `Esc` bricht ab.
+Schaltflächen: **Test** (baut eine Probeverbindung auf und meldet „Connection works (mysql)“ bzw. den Fehler), **Save**, **Save & connect**, **Cancel**. Mit SSH-Tunnel testet **Save** zuerst die Verbindung und speichert nur, wenn sie klappt – erst dann werden die SSH-Daten in die Verbindung übernommen. `Tab`/`Shift+Tab` bewegen zwischen den Feldern, `Enter` auf einer Auswahlliste öffnet sie, `Esc` bricht ab.
 
 Gespeichert wird in `config.toml` (Abschnitt `[profiles.<name>]`, übrige Inhalte und Kommentare der Datei bleiben erhalten), das Passwort getrennt im Passwortspeicher `credentials.toml` (Modus 0600). Wählt man eine andere Passwortquelle als `stored`, wird ein gespeichertes Passwort entfernt. Änderungen an einer offenen Verbindung wirken erst nach dem Neuverbinden (F2, `x`, dann wieder verbinden).
 
@@ -185,6 +191,30 @@ Gespeichert wird in `config.toml` (Abschnitt `[profiles.<name>]`, übrige Inhalt
 | `"pgpass"` | Erste passende Zeile aus `$PGPASSFILE` bzw. `~/.pgpass` (Host – Standard `localhost` –, Port, Datenbank, Benutzer; `*` als Platzhalter). |
 
 Ein Passwort im Klartext in `config.toml` wird abgelehnt: Die Datei lädt dann nicht.
+
+### SSH-Tunnel
+
+Eine Verbindung kann über einen SSH-Server laufen – etwa zu einer Datenbank, die nur von einem Bastion-Host aus erreichbar ist oder auf ihrem Server nur an `127.0.0.1` lauscht. dbcc spricht SSH selbst (kein `ssh`-Prozess, kein lokal geöffneter Port); alle Verbindungen der Sitzung laufen durch den Tunnel: Hauptsitzung, Hilfsverbindung, der PostgreSQL-Abbruch per `F8`, das Neuverbinden bei `cd` in eine andere PostgreSQL-Datenbank.
+
+**Einrichten (F2):** Im Verbindungseditor unter „SSH tunnel“ einen `Host` aus deiner `~/.ssh/config` wählen (oder „manual“ und Host, Port, Benutzer eintragen). **Host und Port der Verbindung sind dann die Datenbank aus Sicht des SSH-Servers** – oft `127.0.0.1` und der Standardport; ein Name dort wird auf dem SSH-Server aufgelöst, nicht lokal. **Save** verbindet zuerst; klappt die Verbindung, werden die SSH-Daten (Alias, Host, Port, Benutzer, Schlüsseldatei, Jump-Hosts) mit der Verbindung gespeichert. So funktioniert sie auch später noch, wenn sich der Eintrag in `~/.ssh/config` ändert oder fehlt.
+
+**Was aus `~/.ssh/config` übernommen wird:** `HostName`, `Port`, `User`, `IdentityFile` (alle, in Reihenfolge; `%d %h %r %u %p %n` und `~` werden ersetzt), `IdentitiesOnly`, `ProxyJump` (mehrere Stationen; jede wird ebenfalls in der Konfiguration nachgeschlagen), `UserKnownHostsFile`, `GlobalKnownHostsFile`, `HostKeyAlias`, `StrictHostKeyChecking` (`yes`/`true`, `accept-new`, `no`/`false`/`off`, `ask`), `HostKeyAlgorithms`, `KexAlgorithms`, `PubkeyAcceptedAlgorithms`, `Ciphers`, `MACs` (auch mit den Präfixen `+`, `-`, `^`, z. B. `+ssh-rsa` für alte Server), `ServerAliveInterval` und `ConnectTimeout`. `Host`-Muster mit `*`, `?` und `!` sowie `Include` wirken wie bei OpenSSH (der erste Wert gilt; ein `Include` innerhalb eines `Host`-Blocks gilt nur für diesen Host). `Match`-Blöcke werden ignoriert. `ProxyCommand` wird nicht unterstützt (stattdessen `ProxyJump`). Die mit der Verbindung gespeicherten Werte haben Vorrang vor der Konfiguration.
+
+**Anmeldung,** in dieser Reihenfolge: die konfigurierten Schlüsseldateien (über `ssh-agent`, wenn der Agent den Schlüssel hat, sonst aus der Datei), dann die übrigen Agent-Schlüssel (nicht bei `IdentitiesOnly yes`), dann Passwort bzw. keyboard-interactive. Eine verschlüsselte Schlüsseldatei fragt nach ihrer Passphrase erst, wenn der Server den Schlüssel akzeptiert (dafür muss daneben die `.pub`-Datei liegen). RSA-Schlüssel signieren nur mit SHA-2 (`rsa-sha2-512/256`), wie OpenSSH ab 8.8; `PubkeyAcceptedAlgorithms +ssh-rsa` erlaubt SHA-1 für alte Server. Nach einem falschen Passwort wird erneut gefragt. Fragen erscheinen als maskiertes Eingabefenster (headless: auf `/dev/tty`); die Zeit zum Antworten zählt nicht gegen das Verbindungs-Timeout. Mit „SSH password: save after the first login“ (`ssh.password = "stored"`) wird das Passwort bzw. die Passphrase **des Zielservers**, die funktioniert hat, im Passwortspeicher abgelegt – zusammen mit der Angabe, wofür es gilt (SSH-Passwort oder Passphrase genau dieser Schlüsseldatei) und für welchen Server (`host:port`) – und beim nächsten Mal **nur für diese Frage** verwendet: nie für einen Jump-Host, nie als Antwort auf eine andere Frage; Einmal-Codes werden nie gespeichert. „Test“ im Editor speichert nichts, erst „Save“. Ein für einen Server gespeichertes Geheimnis wird nie einem anderen angeboten – auch nicht, wenn der SSH-Host von Hand in `config.toml` geändert wird. Schließen des Editors (`Esc`) bricht einen laufenden Test ab.
+
+**Host-Schlüssel** werden wie bei OpenSSH geprüft: gegen `~/.ssh/known_hosts` (bzw. `UserKnownHostsFile`) und die Systemdateien `/etc/ssh/ssh_known_hosts` (bzw. `GlobalKnownHostsFile`, nur gelesen, nie geschrieben), unter dem `HostKeyAlias`, falls gesetzt:
+
+| Situation | Verhalten |
+|---|---|
+| Schlüssel bekannt | Verbindet. |
+| Schlüssel unbekannt | Ein Fenster zeigt Host, Schlüsseltyp und `SHA256:`-Fingerabdruck: **Trust and connect** trägt den Schlüssel in `~/.ssh/known_hosts` ein (im OpenSSH-Format, `ssh` akzeptiert ihn ebenfalls); **Cancel** (vorausgewählt, auch `Esc`) lehnt ab. `Tab`/`Rechts` führen nie von Cancel zu Trust, nur `Links`/`Shift+Tab`. Mit `StrictHostKeyChecking accept-new` (oder `no`) wird der Schlüssel ohne Frage eingetragen, mit `yes` wird die Verbindung abgelehnt. Headless: Frage auf `/dev/tty` (nur `yes` vertraut; `--yes` beantwortet diese Frage nicht), ohne Terminal: abgelehnt. |
+| Schlüssel geändert | Immer abgelehnt mit „HOST KEY CHANGED“, den Fingerabdrücken beider Schlüssel und der Zeile in `known_hosts`. Den alten Eintrag (`ssh-keygen -R host`) nur entfernen, wenn du weißt, warum sich der Schlüssel geändert hat. |
+
+**Während der Verbindung:** alle `ServerAliveInterval` (Standard 30 s) ein Keepalive; nach drei unbeantworteten wird die SSH-Verbindung geschlossen. Eine verlorene SSH-Verbindung wird beim nächsten Verbindungsaufbau neu aufgebaut, ohne bereits gegebene Antworten erneut abzufragen. Schließen der Verbindung (F2 `x`, Beenden) schließt den Tunnel.
+
+**Treiber-Timeouts** (z. B. SQL Server `connection timeout`, PostgreSQL `connect_timeout`) wirken auch durch den Tunnel: Ein Vorgang, der bei Ablauf noch läuft, beendet die Verbindung.
+
+**Grenzen:** Sockets sind über SSH nicht erreichbar (Host und Port verwenden); `Match`-Blöcke und `ProxyCommand` werden nicht ausgewertet; neue `known_hosts`-Einträge werden mit Klartext-Hostnamen geschrieben (auch bei `HashKnownHosts yes`); ein SQL-Server-Instanzname (`host\instanz`) braucht den Port, weil der SQL-Browser-Dienst durch einen Tunnel nicht erreichbar ist. Fehlermeldungen nennen die SSH-Station, z. B. `ssh bastion (jump@203.0.113.7:22): authentication failed …` oder `dial tcp …: connection refused (through SSH bastion (…))`.
 
 ---
 
@@ -980,6 +1010,7 @@ run_statement = "f5"
 | `read_only` | Standard `false`. |
 | `confirm_writes` | Standard `false`. |
 | `params` | Untertabelle mit Treiberparametern (siehe unten). |
+| `ssh` | Untertabelle: SSH-Tunnel (siehe unten). |
 
 Treiberparameter (`[profiles.<name>.params]`):
 
@@ -988,6 +1019,31 @@ Treiberparameter (`[profiles.<name>.params]`):
 | MySQL / MariaDB | `tls` wird zur TLS-Einstellung des Treibers (z. B. `true`, `false`, `skip-verify`, `preferred`); alle anderen Schlüssel werden als DSN-Parameter des go-sql-driver übergeben. Verbindungs-Timeout 10 s. |
 | PostgreSQL | libpq-Schlüsselwörter, z. B. `sslmode`, `sslrootcert`, `connect_timeout` (Standard 10), `application_name` (Standard `dbcc`), `options`, `search_path`; unbekannte Schlüssel werden Laufzeitparameter. Wie bei libpq gelten `PG*`-Umgebungsvariablen für nicht gesetzte Werte. |
 | SQL Server | DSN-Parameter von go-mssqldb, z. B. `encrypt = "disable"`, `TrustServerCertificate = "true"`, `ApplicationIntent = "ReadOnly"`, `"connection timeout" = "30"`; `app name` ist standardmäßig `dbcc`, `dial timeout` 10. |
+
+SSH-Tunnel (`[profiles.<name>.ssh]`, siehe [SSH-Tunnel](#ssh-tunnel)):
+
+| Schlüssel | Bedeutung |
+|---|---|
+| `alias` | Ein `Host` aus `~/.ssh/config`; dessen Optionen gelten. |
+| `host`, `port`, `user` | SSH-Server, Port (Standard 22), Benutzer. Überschreiben die Konfiguration. Mindestens `alias` oder `host` ist Pflicht. |
+| `identity_file` | Schlüsseldatei, die zuerst probiert wird (`~` wird ersetzt). |
+| `proxy_jump` | Jump-Hosts, durch Kommas getrennt (ersetzt `ProxyJump` der Konfiguration). |
+| `password` | `prompt` (Standard) oder `stored`: woher ein SSH-Passwort bzw. eine Schlüssel-Passphrase kommt. **Nie das Geheimnis selbst.** |
+
+```toml
+[profiles.prod-db]
+driver   = "postgres"
+host     = "127.0.0.1"      # aus Sicht des SSH-Servers
+port     = 5432
+user     = "app"
+password = "stored"
+
+[profiles.prod-db.ssh]
+alias = "bastion"           # Host in ~/.ssh/config
+host  = "203.0.113.7"
+user  = "deploy"
+identity_file = "~/.ssh/deploy_key"
+```
 
 ### Passwortspeicher
 
@@ -998,9 +1054,11 @@ Treiberparameter (`[profiles.<name>.params]`):
 
 [profiles.shop-dev]
 password = "…"
+ssh_password = "…"            # SSH-Passwort bzw. Schlüssel-Passphrase (ssh.password = "stored")
+ssh_secret_kind = "password@203.0.113.7:22"  # wofür, für welchen Server
 ```
 
-Profile verwenden ihn mit `password = "stored"`. Der Verbindungsmanager (F2) pflegt die Datei; das Löschen einer Verbindung entfernt auch ihr Passwort.
+Profile verwenden ihn mit `password = "stored"` bzw. `ssh.password = "stored"`. Der Verbindungsmanager (F2) pflegt die Datei; das Löschen einer Verbindung entfernt auch ihre gespeicherten Geheimnisse.
 
 ### Tasten umbelegen: `[keys.<bereich>]`
 
@@ -2042,7 +2100,7 @@ Es gelten `XDG_CONFIG_HOME` und `XDG_STATE_HOME`, falls gesetzt.
 - **Ctrl+Shift+C/X/V** verarbeiten viele Terminals selbst (Kopieren der Terminal-Markierung, Einfügen). Das ist gewollt; Einfügen kommt dann per Bracketed Paste an. Erreichen die Tasten dbcc, wirken sie auf den Editor.
 - **Shift+F-Tasten** auf der Linux-Konsole (die sie als F13–F24 senden) werden erkannt.
 - `Ctrl+Enter` ist in den meisten Terminals nicht von `Enter` zu unterscheiden und deshalb nicht belegt.
-- **Eingabe „hängt“, Tasten werden verschluckt:** Falls ein Terminal je eine C1-Steuersequenz (z. B. `ESC P`) erzeugt, wartet die Eingabe auf deren Ende. `Esc` und dann `\` (der String-Terminator `ESC \`) beendet die Sequenz. dbcc verhindert solche Belegungen (Alt + Großbuchstabe) bereits bei der Konfiguration.
+- **Alt + Großbuchstabe** (z. B. `Alt+Shift+X`) senden ältere Terminals als `ESC X` – das ist zugleich der Beginn einer Steuerzeichenkette, nach der die Eingabe früher alle weiteren Tasten verschluckte. dbcc filtert diese Tastendrücke (`ESC X`, `ESC ^`, `ESC _`, `ESC ]`, `ESC N`, `ESC O`) vor der Auswertung; sie haben keine Funktion, die Eingabe bleibt bedienbar. Als Tastenbelegung lehnt dbcc Alt + Großbuchstabe weiterhin ab. Sollte die Eingabe dennoch einmal hängen: `Esc` und dann `\` (der String-Terminator `ESC \`) beendet eine offene Sequenz.
 
 ### Terminal und Farben
 
@@ -2073,6 +2131,10 @@ pkill -QUIT dbcc
 | `passwords must not be stored in the profile file …` | Klartextpasswort in `config.toml`; Passwortquelle verwenden. |
 | `settings.page_size = …: must be at least 10` | `page_size` zu klein. |
 | `user command script skipped: …` | Eigenes Lua-Skript fehlerhaft; ein gleichnamiger eingebauter Befehl bleibt aktiv. |
+| `unknown host key for … ; connect once with ssh …` | Headless ohne Terminal: Der Host-Schlüssel des SSH-Servers ist unbekannt. Einmal mit `ssh` oder in der dbcc-Oberfläche verbinden und den Schlüssel bestätigen. |
+| `HOST KEY CHANGED for …` | Der SSH-Server zeigt einen anderen Schlüssel als in `known_hosts`. Verbindung abgelehnt – siehe [SSH-Tunnel](#ssh-tunnel). |
+| `ssh …: authentication failed (agent, key files and password were tried)` | Kein Anmeldeweg hat funktioniert: Schlüsseldatei, `ssh-agent`, Benutzer und Passwort prüfen. |
+| `… uses ProxyCommand, which dbcc does not support` | Der Host in `~/.ssh/config` nutzt `ProxyCommand`; stattdessen `ProxyJump` verwenden. |
 
 ---
 

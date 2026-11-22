@@ -69,6 +69,9 @@ func (m *MSSQL) Open(ctx context.Context, p *config.Profile, cred config.Credent
 	if i := strings.IndexByte(host, '\\'); i >= 0 {
 		host, instance = host[:i], host[i+1:]
 	}
+	if instance != "" && cred.Port == 0 && cred.Dial != nil {
+		return nil, fmt.Errorf("SQL Server instance %q through SSH: give the port (the SQL Browser service cannot be reached through a tunnel)", instance)
+	}
 	u := &url.URL{Scheme: "sqlserver", User: url.UserPassword(cred.User, cred.Password)}
 	switch {
 	case instance != "" && cred.Port == 0:
@@ -95,8 +98,24 @@ func (m *MSSQL) Open(ctx context.Context, p *config.Profile, cred config.Credent
 	if err != nil {
 		return nil, err
 	}
+	if cred.Dial != nil {
+		conn.Dialer = tunnelDialer{dial: cred.Dial, host: host} // SSH tunnel (A27)
+	}
 	return sql.OpenDB(conn), nil
 }
+
+// tunnelDialer dials through the SSH tunnel; as a driver.HostDialer it
+// makes the driver leave name resolution to the far side.
+type tunnelDialer struct {
+	dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	host string
+}
+
+func (d tunnelDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	return d.dial(ctx, network, addr)
+}
+
+func (d tunnelDialer) HostName() string { return d.host }
 
 // Detect reads the product version.
 func (m *MSSQL) Detect(ctx context.Context, c dialect.Conn) (dialect.Dialect, error) {
