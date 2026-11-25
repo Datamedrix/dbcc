@@ -68,8 +68,17 @@ func (h *catHost) Message(m exec.Message) {
 		h.msgs = append(h.msgs, m.Info)
 	}
 }
-func (h *catHost) Confirm(string) (bool, error)                       { return true, nil }
-func (h *catHost) Pick(string, []string) (int, error)                 { return -1, script.ErrNoUI }
+func (h *catHost) Confirm(string) (bool, error)       { return true, nil }
+func (h *catHost) Pick(string, []string) (int, error) { return -1, script.ErrNoUI }
+func (h *catHost) Form(string, []script.OptionSpec, map[string]any) (map[string]any, bool, error) {
+	return nil, false, script.ErrNoUI
+}
+func (h *catHost) OpenFile(script.SaveFileOptions) (string, bool, error) {
+	return "", false, script.ErrNoUI
+}
+func (h *catHost) SaveFile(script.SaveFileOptions) (string, bool, error) {
+	return "", false, script.ErrNoUI
+}
 func (h *catHost) EditorSet(string) error                             { return script.ErrNoUI }
 func (h *catHost) EditorOpen(string, string, *script.ObjectRef) error { return nil }
 func (h *catHost) About() error                                       { return nil }

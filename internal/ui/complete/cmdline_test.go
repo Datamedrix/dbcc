@@ -218,11 +218,20 @@ func TestLastWordStart(t *testing.T) {
 
 type nopHost struct{}
 
-func (nopHost) Result(*exec.Result)                                {}
-func (nopHost) Text(_, _, _ string)                                {}
-func (nopHost) Message(exec.Message)                               {}
-func (nopHost) Confirm(string) (bool, error)                       { return false, nil }
-func (nopHost) Pick(string, []string) (int, error)                 { return -1, script.ErrNoUI }
+func (nopHost) Result(*exec.Result)                {}
+func (nopHost) Text(_, _, _ string)                {}
+func (nopHost) Message(exec.Message)               {}
+func (nopHost) Confirm(string) (bool, error)       { return false, nil }
+func (nopHost) Pick(string, []string) (int, error) { return -1, script.ErrNoUI }
+func (nopHost) Form(string, []script.OptionSpec, map[string]any) (map[string]any, bool, error) {
+	return nil, false, script.ErrNoUI
+}
+func (nopHost) OpenFile(script.SaveFileOptions) (string, bool, error) {
+	return "", false, script.ErrNoUI
+}
+func (nopHost) SaveFile(script.SaveFileOptions) (string, bool, error) {
+	return "", false, script.ErrNoUI
+}
 func (nopHost) EditorSet(string) error                             { return script.ErrNoUI }
 func (nopHost) EditorOpen(string, string, *script.ObjectRef) error { return nil }
 func (nopHost) About() error                                       { return nil }
@@ -239,6 +248,13 @@ func TestCommandLineDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	comp := cmdCompleter(t)
+	dir := t.TempDir()
+	for _, f := range []string{"load.sql", "lib.lua"} {
+		os.WriteFile(filepath.Join(dir, f), nil, 0o644)
+	}
+	os.Mkdir(filepath.Join(dir, "scripts"), 0o755)
+	os.WriteFile(filepath.Join(dir, "scripts", "a.sql"), nil, 0o644)
+	comp.Dir = dir
 	cases := []struct {
 		line string
 		want []string
@@ -251,7 +267,18 @@ func TestCommandLineDefaults(t *testing.T) {
 		{"tail -f -i 2 or", []string{"tail -f -i 2 orders", `tail -f -i 2 "order items"`}},
 		{"kill -q ", nil},
 		{"kill -", []string{"kill -q"}},
-		{"export -", []string{"export -f"}},
+		{"export -", []string{"export -f", "export -o", "export -t"}},
+		// flag_values = { t = "exporters" }: the registered export types (A28).
+		{"export -t ", []string{"export -t csv", "export -t json"}},
+		{"export -t j", []string{"export -t json"}},
+		{"export -t=c", []string{"export -t=csv"}},
+		// flag_values = { t = "importers" } and file:<path> objects (A29).
+		{"open -t ", []string{"open -t csv"}},
+		{"ll file:l", []string{"ll file:lib.lua", "ll file:load.sql"}},
+		{"head file:s", []string{"head file:scripts/"}},
+		{"wc file:scripts/", []string{"wc file:scripts/a.sql"}},
+		{"open file:l", []string{"open file:lib.lua", "open file:load.sql"}}, // a "file" argument
+		{"export file:s", []string{"export file:scripts/"}},
 	}
 	for _, c := range cases {
 		if got := commandLine(context.Background(), reg, comp, c.line); !eq(got, c.want) {

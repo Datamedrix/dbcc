@@ -6,7 +6,6 @@ package script
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -23,6 +22,9 @@ import (
 // ctx like ctx:resolve, restricted to kinds) or an object table from
 // ctx:resolve.
 func (rt *Runtime) objectArg(L *lua.LState, self *lua.LTable, n int, kinds dialect.ObjectKinds) *Resolved {
+	if isFileName(L.Get(n)) {
+		rt.raisef("%s is a file, not a database object", L.ToStringMeta(L.Get(n)).String())
+	}
 	switch v := L.Get(n).(type) {
 	case lua.LString:
 		r, err := rt.ResolveObject(rt.gctx(), luaFieldString(self, "conn"), string(v), kinds)
@@ -404,9 +406,10 @@ func expandHome(p string) string {
 // continued to the end, ignoring max_rows; an active local filter is
 // applied while streaming; an active local sort loads all rows first
 // (spec 10.7). opts.force overwrites an existing file; opts.progress sets
-// the row interval of progress messages (0: none). Cancellable.
+// the row interval of progress messages (0: none). Cancellable. file must
+// be a path the owner chose in this invocation (see checkChosen).
 func (rt *Runtime) apiExport(L *lua.LState, self *lua.LTable) int {
-	file := expandHome(L.CheckString(2))
+	file := expandHome(strings.TrimPrefix(L.CheckString(2), FilePrefix))
 	opts := ensureTable(L, 3, "opts")
 	force := false
 	every := ExportProgressEvery
@@ -415,6 +418,16 @@ func (rt *Runtime) apiExport(L *lua.LState, self *lua.LTable) int {
 		if n, ok := opts.RawGetString("progress").(lua.LNumber); ok {
 			every = int(n)
 		}
+	}
+	if rt.exportBusy {
+		// The exporter running now streams the active result; a second
+		// stream would close its cursor underneath it.
+		return rt.raise(errors.New("ctx:export cannot run inside an exporter"))
+	}
+	// Only a path the owner chose (before the format check and any file
+	// system call, so other paths cannot be probed).
+	if err := rt.checkChosen("ctx:export", file); err != nil {
+		return rt.raise(err)
 	}
 	format, err := export.FormatFromFile(file)
 	if err != nil {
@@ -436,23 +449,17 @@ func (rt *Runtime) apiExport(L *lua.LState, self *lua.LTable) int {
 }
 
 func (rt *Runtime) exportResult(file, format string, force bool, every int, res *exec.Result, view exec.View) (n int, err error) {
-	flag := os.O_WRONLY | os.O_CREATE | os.O_EXCL
-	if force {
-		flag = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-	}
-	f, err := os.OpenFile(file, flag, 0o644)
+	// Like ctx:export_with: a failed export never destroys an existing file
+	// (see openExportTarget).
+	f, commit, abort, err := openExportTarget(file, force, "ctx:export(file, {force = true})")
 	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return 0, fmt.Errorf("%s already exists; overwrite with export -f (in Lua: ctx:export(file, {force = true}))", file)
-		}
 		return 0, err
 	}
 	defer func() {
-		if cerr := f.Close(); err == nil && cerr != nil {
-			err = cerr
-		}
-		if err != nil {
-			os.Remove(file) // no half-written export
+		if err == nil {
+			err = commit()
+		} else {
+			abort()
 		}
 	}()
 	names := make([]string, len(res.Columns))

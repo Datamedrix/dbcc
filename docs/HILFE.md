@@ -17,18 +17,19 @@ Dieses Handbuch beschreibt den gesamten Funktionsumfang so, wie er im Code umges
 - [7. Editor und Scratches](#7-editor-und-scratches)
 - [8. SQL ausführen](#8-sql-ausführen)
 - [9. Ergebnisse](#9-ergebnisse)
-- [10. Zeilenformular](#10-zeilenformular)
-- [11. Kommandozeile und Befehle](#11-kommandozeile-und-befehle)
-- [12. Vervollständigung](#12-vervollständigung)
-- [13. Transaktionen und Sicherheit](#13-transaktionen-und-sicherheit)
-- [14. Headless-Betrieb und Skripte](#14-headless-betrieb-und-skripte)
-- [15. Konfiguration](#15-konfiguration)
-- [16. Tastenreferenz](#16-tastenreferenz)
-- [17. Eigene Befehle in Lua](#17-eigene-befehle-in-lua)
-- [18. Datenbankspezifisches](#18-datenbankspezifisches)
-- [19. Dateien und Verzeichnisse](#19-dateien-und-verzeichnisse)
-- [20. Fehlerbehebung](#20-fehlerbehebung)
-- [21. Über dbcc](#21-über-dbcc)
+- [10. Dateien](#10-dateien)
+- [11. Zeilenformular](#11-zeilenformular)
+- [12. Kommandozeile und Befehle](#12-kommandozeile-und-befehle)
+- [13. Vervollständigung](#13-vervollständigung)
+- [14. Transaktionen und Sicherheit](#14-transaktionen-und-sicherheit)
+- [15. Headless-Betrieb und Skripte](#15-headless-betrieb-und-skripte)
+- [16. Konfiguration](#16-konfiguration)
+- [17. Tastenreferenz](#17-tastenreferenz)
+- [18. Eigene Befehle in Lua](#18-eigene-befehle-in-lua)
+- [19. Datenbankspezifisches](#19-datenbankspezifisches)
+- [20. Dateien und Verzeichnisse](#20-dateien-und-verzeichnisse)
+- [21. Fehlerbehebung](#21-fehlerbehebung)
+- [22. Über dbcc](#22-über-dbcc)
 
 ---
 
@@ -41,6 +42,8 @@ dbcc vereint in einem Programm:
 - Einen **Skript-Runner** mit Statement-Zerlegung (MySQL `DELIMITER`, PostgreSQL Dollar-Quoting, SQL Server `GO n`), Abbruch beim ersten Fehler mit Zeilennummer.
 - Ein **Ergebnis-Grid** mit seitenweisem Nachladen, horizontalem Scrollen (nie Zeilenumbruch), Sortieren, drei Filterarten, Pivot-Ansicht, Zellendetail und Kopieren über die Zwischenablage (OSC 52).
 - Ein **Zeilenformular** zum Einfügen und Bearbeiten von Datensätzen mit NULL-Behandlung, Fremdschlüssel-Suchfenster und Zuordnung von Serverfehlern zum betroffenen Feld.
+- **Export** des ganzen Ergebnisses als CSV (Trennzeichen, Kopfzeile, Quoting, Text für NULL, Zeilenende, BOM) oder JSON – aus dem Grid mit `e` (Typliste, Einstellungen, Dateidialog) oder als `export datei.csv`. **Exportformate sind Lua-Plugins**: eigene Skripte fügen zur Laufzeit Formate hinzu (Markdown, SQL-Inserts …).
+- **Dateien als Datenquelle:** CSV-Dateien im Ergebnis-Grid öffnen (`open`, `ll file:kunden.csv`), mit Seiten, lokalem Sortieren und Filtern und Export; auch `head`, `tail`, `wc` und `cat` arbeiten mit Dateien, headless sogar ohne Verbindung. Gelesen wird von **Lua-Import-Plugins**, weitere Formate sind also ein Skript entfernt.
 - Eine **Befehlsschicht, die vollständig in Lua geschrieben ist**. Jeder Befehl ist ein Lua-Skript; eigene Skripte ergänzen oder ersetzen die eingebauten.
 - Einen eingebauten **SSH-Tunnel**: im Verbindungsmanager einen `Host` aus `~/.ssh/config` wählen; Agent, Schlüssel, Passwörter, `ProxyJump` und `known_hosts`-Prüfung wie bei OpenSSH.
 - Einen **Headless-Modus** für Skripte und einzelne Befehle ohne Oberfläche, mit Exit-Code.
@@ -91,7 +94,7 @@ dbcc -p <profile> < file.sql            stdin ist kein Terminal: ohne UI ausfüh
 | `--licenses` | Lizenzhinweise der Go-Standardbibliothek und aller mitgelieferten Fremdmodule ausgeben und beenden. |
 | `-h`, `--help` | Aufrufhilfe. |
 
-Der Headless-Modus wird gewählt, sobald `-f` oder `-c` angegeben ist **oder stdin kein Terminal ist**. Details und Exit-Codes: [Abschnitt 14](#14-headless-betrieb-und-skripte).
+Der Headless-Modus wird gewählt, sobald `-f` oder `-c` angegeben ist **oder stdin kein Terminal ist**. Details und Exit-Codes: [Abschnitt 15](#15-headless-betrieb-und-skripte).
 
 ### Startbildschirm
 
@@ -173,8 +176,8 @@ Das Formular enthält:
 | SSH key file | Privater Schlüssel, der zuerst probiert wird. Leer: die Schlüssel von `ssh-agent` sowie `~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`. |
 | Jump hosts | `ProxyJump`-Zwischenstationen, durch Kommas getrennt: ein Host aus `~/.ssh/config` oder `user@host:port`. |
 | SSH password | Passwort bzw. Schlüssel-Passphrase, falls nötig: `ask when needed` (= `prompt`) oder `save after the first login` (= `stored`). |
-| Read only, Autocommit, Confirm writes | Siehe [Abschnitt 13](#13-transaktionen-und-sicherheit). |
-| Driver options | Treiberparameter als `key=value, key=value`, z. B. `tls=skip-verify` oder `sslmode=require`. Siehe [Abschnitt 15](#15-konfiguration). |
+| Read only, Autocommit, Confirm writes | Siehe [Abschnitt 14](#14-transaktionen-und-sicherheit). |
+| Driver options | Treiberparameter als `key=value, key=value`, z. B. `tls=skip-verify` oder `sslmode=require`. Siehe [Abschnitt 16](#16-konfiguration). |
 
 Schaltflächen: **Test** (baut eine Probeverbindung auf und meldet „Connection works (mysql)“ bzw. den Fehler), **Save**, **Save & connect**, **Cancel**. Mit SSH-Tunnel testet **Save** zuerst die Verbindung und speichert nur, wenn sie klappt – erst dann werden die SSH-Daten in die Verbindung übernommen. `Tab`/`Shift+Tab` bewegen zwischen den Feldern, `Enter` auf einer Auswahlliste öffnet sie, `Esc` bricht ab.
 
@@ -481,6 +484,7 @@ Solange eine Neuabfrage läuft, werden weitere Sortier- oder Filteränderungen m
 | `F5` | Abfrage erneut ausführen (table-origin mit aktivem Sortieren/Filter: mit diesem Zustand; sonst das ursprüngliche Statement mit seinen Argumenten) |
 | `F4` | Datensatz unter dem Cursor bearbeiten (Zeilenformular; nur table-origin) |
 | `F7` | Neue Zeile (Zeilenformular; nur table-origin) |
+| `e` | Das ganze Ergebnis exportieren: Typ, Einstellungen und Datei in Dialogen (siehe [Export eines Ergebnisses](#export-eines-ergebnisses)) |
 | `[` / `]` | Vorheriger / nächster Ergebnistab |
 | `Alt+X` | Ergebnistab schließen und Speicher freigeben. Der Messages-Tab bleibt immer. |
 | `Alt+Q` | Alle Ergebnistabs schließen (Messages bleibt). |
@@ -491,11 +495,46 @@ Ein mit `tail -f` geöffnetes Ergebnis hängt neue Zeilen automatisch unten an. 
 
 ### Export eines Ergebnisses
 
-`export <datei.csv|datei.json>` schreibt das **ganze** aktive Ergebnis, nicht nur die Seite im Speicher. Details unter [`export`](#export).
+`e` in einem Ergebnistab exportiert das **ganze** Ergebnis, nicht nur die Seite im Speicher:
+
+1. **Typ:** eine Liste der Exportformate (`CSV (comma-separated values)`, `JSON (array of objects)` und selbst installierte). Gibt es nur ein Format, entfällt die Liste.
+2. **Einstellungen:** ein Formular mit den Optionen des Formats – bei CSV Trennzeichen, Kopfzeile, Quoting, Anführungszeichen, Text für NULL, Zeilenende und UTF-8-Byte-Order-Mark. `Tab`/`Shift+Tab` wechseln das Feld, `Enter` öffnet eine Auswahl, `Leertaste` schaltet eine Checkbox um, `F2` oder **OK** übernimmt, `Esc` bricht ab.
+3. **Datei:** der Dateidialog, in drei umrahmten Bereichen: **Folders** (der Verzeichnisbaum) links, **File name** oben rechts und **Files** darunter; der Bereich mit dem Fokus hat einen Rahmen in der Fokusfarbe (und mit Doppellinie), die anderen den normalen. File name enthält den Dateinamen (vorgeschlagen: der Titel des Ergebnisses mit der Endung des Formats, z. B. `customers.csv`), Files die Einträge des angezeigten Verzeichnisses (in der ersten Zeile sein Pfad) (`../`, Verzeichnisse, dann Dateien mit Größe und Datum; Dateien ohne die Endung des Formats sind abgeblendet). `Tab`/`Shift+Tab` wechseln Dateiname → Liste → Baum; `Enter` auf einem Verzeichnis öffnet es, auf einer Datei übernimmt es ihren Namen in den Dateinamen; `Alt+H` zeigt versteckte Einträge; `Esc` bricht ab. Der Dateiname nimmt auch einen Pfad an – absolut, `~/…` oder relativ zum angezeigten Verzeichnis; `Enter` mit einem Verzeichnis wechselt dorthin, alles andere ist die Datei (ein Name ohne Endung bekommt die des Formats). Das Verzeichnis muss existieren. Der Dialog beginnt im Verzeichnis der zuletzt in dieser Sitzung gewählten Datei, sonst im Arbeitsverzeichnis.
+4. **Überschreiben:** Gibt es die Datei schon, fragt dbcc `<datei> exists. Overwrite?`.
+
+Dann werden die Zeilen geschrieben, mit Fortschritt im Messages-Log, und dort steht `export: 1,234 rows written to /home/anna/customers.csv (csv)`. Jeder Abbruch endet mit `export cancelled`. Die Einstellungen werden nicht gespeichert. Derselbe Ablauf startet, wenn man `export` ohne Datei eintippt; mit Datei öffnet sich kein Dialog. Details unter [`export`](#export).
 
 ---
 
-## 10. Zeilenformular
+## 10. Dateien
+
+dbcc zeigt Dateien im Ergebnis-Grid wie Abfrageergebnisse. Gelesen wird von einem **Importformat** – einem Lua-Plugin; eingebaut ist CSV (auch `.tsv` und `.txt`), eigene Formate sind [Skripte](#importformate-dbccimporter).
+
+### Eine Datei öffnen
+
+- `F9`, `open`: Der Dateidialog öffnet sich im **Öffnen-Modus** (die drei umrahmten Bereiche des [Speichern-Dialogs](#export-eines-ergebnisses): Folders, File name, Files). `Enter` auf einer Datei in der Liste öffnet sie; ein eingetippter Name oder Pfad muss existieren (sonst `kunden.cvs does not exist`, der Dialog bleibt offen). Danach das Format – nur gefragt, wenn die Endung es nicht entscheidet – und seine Einstellungen (bei CSV: Trennzeichen, Kopfzeile, Anführungszeichen, Kodierung, Text für NULL, leeres Feld ist NULL, numerische Spalten, zu überspringende Zeilen), `F2` oder **OK**; die Datei erscheint in einem Ergebnistab mit ihrem Namen. Jeder Abbruch endet mit `open cancelled`.
+- `open kunden.csv` (oder `open -t csv -o delimiter=semicolon kunden.csv`) öffnet ohne Dialoge, siehe [`open`](#open).
+- Überall, wo ein Befehl eine Tabelle nimmt, bezeichnet `file:<pfad>` eine Datei: `ll file:kunden.csv`, `head file:~/daten/kunden.csv 20`, `tail file:log.csv 100` (die letzten 100 Datensätze), `wc file:kunden.csv`, `cat file:kunden.csv` (Pfad, Größe, Datum, die geltenden Importeinstellungen und die Spalten). `file:` wird auch bei Datei-Argumenten angenommen (`open file:kunden.csv`, `export file:out.csv` schreibt `out.csv`). Relative Pfade gelten relativ zum Verzeichnis, in dem dbcc gestartet wurde, `~` ist das Home-Verzeichnis; `Ctrl+Space` vervollständigt Dateinamen nach `file:`. `tail -f` und `-k` gibt es für Dateien nicht. Andere Befehle lehnen eine Datei ab: `cp: kunden.csv is a file, not a table or view`.
+
+### Das Grid mit einer Datei
+
+- Ein Datei-Ergebnis ist ein **freies Ergebnis**: lokales Sortieren und Filtern (`s`, `f`, `/`), Pivot, Zellendetail, Kopieren, Export (`e`) – kein Zeilenformular, kein `WHERE`, und es gehört zu keiner Verbindung (Schließen einer Verbindung oder `cd` berühren es nicht).
+- **Große Dateien** werden in Häppchen und Seiten gelesen wie eine große Abfrage (`page_size`, `fetch_size`): im Speicher liegt eine Seite. `n`/`F6` liest die nächste Seite weiter; `p`, Neu ausführen (`F5`) und ein Export lesen die Datei von vorn und überspringen die Zeilen vor der Seite (`F8` bricht ab, auch ein hängendes Format). Endet ein Lesevorgang mit einem Fehler oder `F8`, ist der Tab `partial` mit einer nächsten Seite: `n` oder `F5` lesen erneut. Hat sich die Datei inzwischen geändert, wird der neue Inhalt gezeigt; haben sich ihre Spalten geändert: `the statement returns different columns now; re-run it` – dann neu öffnen.
+- **Spalten**, die in den ersten 200 Datensätzen numerisch aussehen, sind rechtsbündig und sortieren als Zahlen; der Text selbst wird nie verändert (`1.50` bleibt `1.50`).
+- **Einstellungen werden je Datei für die Sitzung gemerkt**: Nach dem Öffnen von `kunden.csv` mit Semikolon verwenden `wc file:kunden.csv`, `head`, `cat` und F5 dieselben Einstellungen. Mit dem Ende von dbcc sind sie vergessen; headless gibt es kein Gedächtnis.
+- Nach [`reload`](#reload) ist ein offener Datei-Tab `partial` (sein Leser gehörte zu den alten Skripten); Blättern liest ihn über das Importformat gleichen Namens neu – gibt es das nicht mehr: `import type "csv" is no longer registered; open the file again`.
+
+### Kodierungen, Anführungszeichen, NULL
+
+- UTF-8 ist der Standard; ein UTF-8-Byte-Order-Mark wird übersprungen; ungültige Bytes werden zu `�` (U+FFFD), nie zu einem Fehler. `windows-1252` (mit `€`, `„“`, `Š`…) und `iso-8859-1` sind die Alternativen (Einstellung **Encoding**).
+- Felder in Anführungszeichen (`"…"`, oder `'…'` mit **Quote character**) dürfen das Trennzeichen und Zeilenumbrüche enthalten; `""` darin ist ein Anführungszeichen. Text nach einem schließenden Anführungszeichen bis zum nächsten Trennzeichen gehört zum Feld (wie bei Tabellenkalkulationen). Leere Zeilen werden übersprungen. Zeilen enden mit LF oder CRLF (ein CR ganz am Ende der Datei wird ebenfalls entfernt); Dateien mit CR allein als Zeilenende (alter Mac) werden **nicht unterstützt** – sie lesen sich als eine Zeile; vorher umwandeln. Ein nie geschlossenes Anführungszeichen ist ein Fehler: `import kunden.csv (csv): unterminated quoted field: the quote opened in line 7 is not closed`.
+- NULL: Standardmäßig ist kein Wert NULL – ein leeres Feld ist leerer Text. **Text for NULL** (z. B. `NULL` oder `\N`) macht ein Feld ohne Anführungszeichen mit genau diesem Text zu NULL; **Empty field is NULL** ebenso leere Felder ohne Anführungszeichen. Ein Wert in Anführungszeichen (`"NULL"`, `""`) ist immer Text. Datensätze mit weniger Feldern werden mit NULL aufgefüllt; mehr Felder als Spalten sind ein Fehler: `import kunden.csv (csv): record 12 has 5 fields, more than the 4 columns` (Datensatz = Datenzeile, die Kopfzeile nicht mitgezählt).
+- **Trennzeichen `auto`** betrachtet die ersten Zeilen (bis 64 KiB) außerhalb von Anführungszeichen und nimmt dasjenige von `,` `;` Tab `|`, das auf den meisten Zeilen gleich oft vorkommt; ohne jedes davon: Komma. Liegt die Erkennung falsch, das Trennzeichen in den Einstellungen wählen.
+- Hin und zurück: Ein mit [`export`](#export) geschriebenes CSV liest sich mit demselben Trennzeichen und Anführungszeichen zurück; NULL kommt als NULL zurück, wenn beide Seiten denselben **Text for NULL** verwenden, sonst als leerer Text.
+
+---
+
+## 11. Zeilenformular
 
 Ein Formular zum Einfügen und Bearbeiten von Zeilen einer Tabelle.
 
@@ -559,7 +598,7 @@ Ein Grid der referenzierten Tabelle mit allen Spalten und einer Filterzeile: Tip
 
 ---
 
-## 11. Kommandozeile und Befehle
+## 12. Kommandozeile und Befehle
 
 ### Die Kommandozeile
 
@@ -585,24 +624,25 @@ Befehle, die schreiben (`cp`, `mv`, `kill`), zeigen das SQL vor der Ausführung,
 | [`cd [path]`](#cd) | Pfad wechseln | nein |
 | [`ls [path]`](#ls) | Inhalt einer Pfadebene | nein |
 | [`pwd`](#pwd) | Aktuellen Pfad zeigen | nein |
-| [`ll <table\|view>`](#ll) | Alle Zeilen im Grid | nein |
-| [`head <table\|view> [n]`](#head) | Erste n Zeilen | nein |
-| [`tail [-f] [-i seconds] [-k column] <table\|view> [n]`](#tail) | Letzte n Zeilen, optional folgen | nein |
-| [`wc <table\|view>`](#wc) | Zeilen zählen | nein |
+| [`ll <table\|view\|file:path>`](#ll) | Alle Zeilen im Grid | nein |
+| [`head <table\|view\|file:path> [n]`](#head) | Erste n Zeilen | nein |
+| [`tail [-f] [-i seconds] [-k column] <table\|view\|file:path> [n]`](#tail) | Letzte n Zeilen, optional folgen | nein |
+| [`wc <table\|view\|file:path>`](#wc) | Zeilen zählen | nein |
 | [`du [table]`](#du) | Daten- und Indexgröße | nein |
-| [`cat [-t kind] <object>`](#cat) | Struktur bzw. Quelltext | nein |
+| [`cat [-t kind] <object\|file:path>`](#cat) | Struktur bzw. Quelltext; Spalten einer Datei | nein |
 | [`edit [-t kind] <object>`](#edit) | Quelltext als Replace-Skript im Editor | nein |
 | [`cp [-a] <src> <new>`](#cp) | Tabelle kopieren | ja |
 | [`mv <table\|view> <new-name>`](#mv) | Umbenennen | ja |
 | [`grep <pattern> [path]`](#grep) | Namen und Quelltexte durchsuchen | nein |
 | [`ps`](#ps) | Laufende Sitzungen | nein |
 | [`kill [-q] <id>`](#kill) | Sitzung beenden | ja |
-| [`export [-f] <file.csv\|file.json>`](#export) | Aktives Ergebnis in Datei | nein |
+| [`export [-f] [-t type] [-o name=value]... [file]`](#export) | Aktives Ergebnis in Datei (CSV, JSON, eigene Formate) | nein |
+| [`open [-t type] [-o name=value]... [file]`](#open) | Eine Datei (CSV …) im Grid öffnen | nein |
 | [`history [n]`](#history) | Statement-Historie | nein |
 | [`reload`](#reload) | Befehle neu laden (eigene Skripte zur Laufzeit installieren) | nein |
 | [`help [command\|about]`](#help) | Hilfe, About-Seite | nein |
 
-Alle Befehle akzeptieren Objekte als Name, qualifizierten Namen oder Pfad (siehe [Abschnitt 5](#5-pfade-und-navigation)). Befehle, die Daten zeigen (`ll`, `head`, `tail`, `wc`), akzeptieren Tabellen, Views und Materialized views.
+Alle Befehle akzeptieren Objekte als Name, qualifizierten Namen oder Pfad (siehe [Abschnitt 5](#5-pfade-und-navigation)). Befehle, die Daten zeigen (`ll`, `head`, `tail`, `wc`), akzeptieren Tabellen, Views und Materialized views. Dateien geben sie als `file:<pfad>` an (siehe [Abschnitt 10](#10-dateien)).
 
 ### cd
 
@@ -624,7 +664,7 @@ Wechselt den aktuellen Pfad.
 
 Großzügigkeit: Auf der Datenbankebene von MySQL/MariaDB bedeutet `cd andere` die Nachbardatenbank (`../andere`). Auf der Schemaebene (PostgreSQL, SQL Server) bedeutet `cd andere` zuerst ein Nachbarschema, sonst eine Nachbardatenbank.
 
-Ein Datenbankwechsel verwendet `USE` (MySQL/MariaDB, SQL Server) bzw. verbindet auf PostgreSQL transparent neu. Ist eine manuelle Transaktion offen, fragt dbcc vorher: Commit, Roll back oder Stay. Beim Betreten einer Datenbank auf PostgreSQL/SQL Server landet man auf deren aktuellem Schema. Auf PostgreSQL setzt der Schemawechsel `search_path` auf `schema, public`; auf SQL Server wird das Schema nur geprüft (siehe [Abschnitt 18](#18-datenbankspezifisches)).
+Ein Datenbankwechsel verwendet `USE` (MySQL/MariaDB, SQL Server) bzw. verbindet auf PostgreSQL transparent neu. Ist eine manuelle Transaktion offen, fragt dbcc vorher: Commit, Roll back oder Stay. Beim Betreten einer Datenbank auf PostgreSQL/SQL Server landet man auf deren aktuellem Schema. Auf PostgreSQL setzt der Schemawechsel `search_path` auf `schema, public`; auf SQL Server wird das Schema nur geprüft (siehe [Abschnitt 19](#19-datenbankspezifisches)).
 
 ### ls
 
@@ -651,18 +691,18 @@ Zeigt den aktuellen Pfad.
 ### ll
 
 ```text
-ll <table|view>
+ll <table|view|file:path>
 ```
 
-`SELECT * FROM <objekt>` im Grid, als table-origin-Ergebnis (serverseitiges Sortieren/Filtern, Formular).
+`SELECT * FROM <objekt>` im Grid, als table-origin-Ergebnis (serverseitiges Sortieren/Filtern, Formular). `ll file:kunden.csv` öffnet eine Datei über ihr Importformat (nach Endung oder den für sie gemerkten Einstellungen, siehe [Abschnitt 10](#10-dateien)) – ohne Verbindung.
 
 ### head
 
 ```text
-head <table|view> [n]
+head <table|view|file:path> [n]
 ```
 
-Die ersten `n` Zeilen (Standard 10) als table-origin-Ergebnis. Das Limit ist dialektgerecht (`LIMIT n` bzw. `TOP (n)`).
+Die ersten `n` Zeilen (Standard 10) als table-origin-Ergebnis. Das Limit ist dialektgerecht (`LIMIT n` bzw. `TOP (n)`). Bei einer Datei die ersten `n` Datensätze (`0`: nur die Spalten). Die Datei wird nicht bis zum Ende gelesen, aber das CSV-Format liest immer voraus, was es für die Spalten braucht – bis zu 64 KiB für die Trennzeichen-Erkennung und bis zu 200 Datensätze für die numerischen Spalten –, egal wie groß `n` ist.
 
 ```text
 head customers 50
@@ -672,8 +712,10 @@ head /prod/crm/contacts
 ### tail
 
 ```text
-tail [-f] [-i seconds] [-k column] <table|view> [n]
+tail [-f] [-i seconds] [-k column] <table|view|file:path> [n]
 ```
+
+Bei einer Datei (`tail file:log.csv 50`): die letzten `n` Datensätze (`0`: nur die Spalten) – die Datei wird bis zum Ende gelesen und behält höchstens `n` Datensätze; `-f` und `-k` gibt es nicht (`tail: -f and -k are not available for files`).
 
 Die letzten `n` Zeilen (Standard 10) nach dem Primärschlüssel (alle seine Spalten) oder nach `-k spalte`, **aufsteigend** angezeigt, als table-origin-Ergebnis. Erzeugt wird `SELECT * FROM (<letzte n nach Schlüssel absteigend>) AS dbcc_tail ORDER BY <schlüssel>`. Eine View oder eine Tabelle ohne Primärschlüssel braucht `-k`.
 
@@ -683,7 +725,7 @@ Die letzten `n` Zeilen (Standard 10) nach dem Primärschlüssel (alle seine Spal
 | `-f` | Folgen: Zeilen mit einem Schlüssel größer als der zuletzt gesehene werden angehängt, sobald sie eingefügt werden |
 | `-i seconds` | Abfrageintervall für `-f` (Standard 2, mindestens 0.5; nur mit `-f`) |
 
-`tail -f` folgt **nur Einfügungen, in Schlüsselreihenfolge**: Geänderte oder gelöschte Zeilen und Zeilen, die später mit einem kleineren Schlüssel committet werden, erscheinen nicht. Es braucht einen einspaltigen Schlüssel (bei zusammengesetztem Primärschlüssel `-k` verwenden) und `n` von mindestens 1. Die Abfragen laufen im Hintergrund auf der **Hilfsverbindung**, nie auf der Hauptsitzung – die Oberfläche bleibt benutzbar. Verhalten im Grid: siehe [Folgende Ergebnisse](#folgende-ergebnisse-tail--f); headless: siehe [Abschnitt 14](#14-headless-betrieb-und-skripte).
+`tail -f` folgt **nur Einfügungen, in Schlüsselreihenfolge**: Geänderte oder gelöschte Zeilen und Zeilen, die später mit einem kleineren Schlüssel committet werden, erscheinen nicht. Es braucht einen einspaltigen Schlüssel (bei zusammengesetztem Primärschlüssel `-k` verwenden) und `n` von mindestens 1. Die Abfragen laufen im Hintergrund auf der **Hilfsverbindung**, nie auf der Hauptsitzung – die Oberfläche bleibt benutzbar. Verhalten im Grid: siehe [Folgende Ergebnisse](#folgende-ergebnisse-tail--f); headless: siehe [Abschnitt 15](#15-headless-betrieb-und-skripte).
 
 ```text
 tail orders
@@ -694,10 +736,10 @@ tail -f -i 0.5 events
 ### wc
 
 ```text
-wc <table|view>
+wc <table|view|file:path>
 ```
 
-`SELECT COUNT(*)`; Ergebnis mit den Spalten `rows` und `object`.
+`SELECT COUNT(*)`; Ergebnis mit den Spalten `rows` und `object`. Bei einer Datei die Zahl der Datensätze, die das Importformat liest (ohne Kopfzeile); `object` ist der absolute Pfad.
 
 ### du
 
@@ -716,8 +758,10 @@ Daten- und Indexgröße und geschätzte Zeilenzahl einer Tabelle, oder ohne Argu
 ### cat
 
 ```text
-cat [-t kind] <object>
+cat [-t kind] <object|file:path>
 ```
+
+Für eine **Datei**: Pfad, Größe, Änderungsdatum, das Importformat mit den geltenden Optionen, dann eine Tabelle der Spalten (`#`, `column`, `numeric` – `yes, decimal comma` für eine mit Dezimalkomma gelesene Spalte).
 
 Für **Tabellen** (und Materialized views) eine strukturierte Beschreibung im Stil von MySQL `DESCRIBE`, erweitert um alle Definitionen und Constraints – kein DDL. Abschnitte:
 
@@ -804,15 +848,76 @@ Beendet die Sitzung mit der Id (siehe `ps`); `-q` bricht nur ihr laufendes State
 ### export
 
 ```text
-export [-f] <file.csv|file.json>
+export [-f] [-t type] [-o name=value]... [file]
 ```
 
-Schreibt das aktive Ergebnis (den aktuellen Ergebnistab) in eine Datei; das Format folgt der Endung. `~` am Anfang wird zum Home-Verzeichnis. Eine vorhandene Datei wird nur mit `-f` überschrieben. Bei einem Fehler wird die halb geschriebene Datei entfernt.
+Schreibt das aktive Ergebnis (den aktuellen Ergebnistab) in einem Exportformat in eine Datei. Eingebaut sind `csv` und `json`; weitere Formate sind [Lua-Plugins](#exportformate-dbccexporter). `~` am Anfang wird zum Home-Verzeichnis. Eine vorhandene Datei wird nur mit `-f` überschrieben (oder nach der Rückfrage im Dialog-Ablauf). Ein gescheiterter oder abgebrochener Export kostet keine Daten: Eine neue Datei wird wieder entfernt; eine vorhandene wird erst ersetzt, wenn der Export vollständig ist – dbcc schreibt in eine temporäre Datei daneben (mit denselben Rechten) und benennt sie über die alte um; bei einem Fehler oder Abbruch bleibt die alte Datei unverändert, entfernt wird nur die temporäre. Ein symbolischer Link bleibt ein Link: ersetzt wird die Datei, auf die er zeigt. (Die ersetzte Datei ist eine neue Datei: Hardlinks auf die alte behalten den alten Inhalt.)
 
+- **Mit Datei** öffnet sich kein Dialog; das funktioniert also auch headless. Das Format kommt aus `-t type`, sonst aus der Dateiendung (ohne Rücksicht auf Groß-/Kleinschreibung: `.csv`, `.json` oder die Endungen eigener Formate). `-o name=value` setzt eine Option des Formats; für mehrere Optionen wiederholen. Nicht angegebene Optionen behalten ihren Standardwert.
+- **Ohne Datei** (das führt `e` im Grid aus) werden Typ, Einstellungen und Datei in Dialogen gewählt, siehe [Export eines Ergebnisses](#export-eines-ergebnisses). `-t` überspringt die Typliste, `-o` füllt die Einstellungen vor, `-f` überspringt die Rückfrage vor dem Überschreiben.
 - Geschrieben wird das **ganze** Ergebnis, nicht nur die Seite im Speicher: Auf der ersten Seite mit noch offenem Cursor werden die geladenen Zeilen geschrieben und der Cursor bis zum Ende fortgesetzt; sonst wird das Statement von vorn erneut ausgeführt (mit seinen Argumenten; nur Lese-Abfragen) und jede Zeile in die Datei gestreamt.
 - Ein aktiver **lokaler Filter** wird beim Streamen angewendet. Eine aktive **lokale Sortierung** lädt vorher alle Zeilen in den Speicher (der Speicherbedarf wächst mit dem Ergebnis).
 - Fortschrittsmeldungen im Messages-Log alle 10.000 Zeilen.
-- CSV: Kopfzeile, NULL als leeres Feld. JSON: ein Array von Objekten, Werte als Strings, NULL als `null`.
+- `help export` listet die Formate mit ihren Optionen und Standardwerten.
+
+Optionen von `csv` (die Standardwerte ergeben das CSV, das dbcc schon immer geschrieben hat):
+
+| Option | Werte | Standard |
+|---|---|---|
+| `delimiter` | `,` `;` Tabulator `\|` – auch mit Namen: `comma`, `semicolon`, `tab`, `pipe` | `,` |
+| `header` | `true`/`false` (auch `yes`/`no`, `1`/`0`): erste Zeile mit den Spaltennamen | `true` |
+| `quoting` | `minimal`: nur Felder, die das Trennzeichen, das Anführungszeichen, CR oder LF enthalten, mit Leerraum beginnen oder `\.` sind · `all`: jedes Feld außer NULL · `nonnumeric`: jedes Feld außer NULL und den Werten numerischer Spalten (ein numerischer Wert, der das Trennzeichen, das Anführungszeichen, CR oder LF enthält – PostgreSQL-Arrays `{1,2}`, Bereiche `[1,10)`, `money` `$1,234.56` –, bekommt trotzdem Anführungszeichen) · `none`: nie (ein Feld, das Anführungszeichen bräuchte, lässt den Export scheitern) | `minimal` |
+| `quote` | `"` oder `'` (`double`, `single`); im Feld wird es verdoppelt | `"` |
+| `null` | Text für NULL, ohne Anführungszeichen | leeres Feld |
+| `line_ending` | `lf` oder `crlf`; Zeilenumbrüche in Werten bleiben, wie sie sind | `lf` |
+| `bom` | `true`: UTF-8-Byte-Order-Mark am Anfang (Excel liest dann UTF-8) | `false` |
+
+Optionen von `json`: `pretty` (`true`: ein Objekt je Zeile, das Layout früherer Versionen; `false`: das ganze Array in einer Zeile). JSON ist immer ein Array von Objekten; Schlüssel sind die Spaltennamen, Werte Strings, NULL ist `null`.
+
+```text
+export ~/customers.csv
+export -f -o delimiter=semicolon -o bom=true ~/customers.csv
+export -t csv -o delimiter=tab -o header=false out.txt
+export -o pretty=false items.json
+export                        # Dialoge: Typ, Einstellungen, Datei
+```
+
+Hinweis: Ein `;` am Ende beendet die Befehlszeile, `-o delimiter=;` verliert also seinen Wert – quotieren (`-o delimiter=';'`) oder den Namen nehmen (`-o delimiter=semicolon`).
+
+Meldungen: `export: 3 rows written to /tmp/items.csv (csv)`, `export cancelled`, `/tmp/items.csv already exists; overwrite with export -f (in Lua: ctx:export_with(name, file, {force = true}))`, `unknown export type "xml" (types: csv, json)`, `unknown export type for "x.xlsx": use -t <type> or one of the extensions .csv, .json (types: csv, json)`, `export type csv: unknown option "sep" (options: bom, delimiter, header, line_ending, null, quote, quoting)`, `export type csv: option header: want true or false (also yes/no, 1/0), got "maybe"`, `no active result to export`. Headless ohne Datei: `export: a file is required without UI; usage: export [-f] [-t type] [-o name=value]... [file]`.
+
+### open
+
+```text
+open [-t type] [-o name=value]... [file]
+```
+
+Öffnet eine Datei im Ergebnis-Grid (siehe [Abschnitt 10](#10-dateien)).
+
+- **Mit Datei** öffnet sich kein Dialog – das funktioniert auch headless und gibt die Zeilen wie `ll` aus. Das Format kommt aus `-t type`, sonst aus der Endung (`.csv`, `.tsv`, `.txt` oder die eigener Formate; `no import type for "x.dat" (extensions: .csv, .tsv, .txt; types: csv)`); `-o name=value` setzt eine Option, wiederholbar. Ausdrückliche `-t`/`-o` werden für die Datei für die Sitzung gemerkt.
+- **Ohne Datei**: Dateidialog, dann das Format (nur wenn die Endung es nicht entscheidet: eine Liste), dann das Einstellungsformular, dann das Grid. `-t` überspringt die Liste, `-o` füllt das Formular vor. Abbruch: `open cancelled`. Headless ohne Datei: `open: a file is required without UI; usage: open [-t type] [-o name=value]... [file]`.
+- `help open` listet die Formate mit ihren Optionen und Standardwerten.
+
+Optionen von `csv`:
+
+| Option | Werte | Standard |
+|---|---|---|
+| `delimiter` | `auto`, `,` `;` Tabulator `\|` – auch mit Namen: `comma`, `semicolon`, `tab`, `pipe` | `auto` |
+| `header` | `true`/`false`: der erste Datensatz benennt die Spalten (ohne: `col1`, `col2`, …; leere Namen werden `colN`) | `true` |
+| `quote` | `"` oder `'` (`double`, `single`) | `"` |
+| `encoding` | `utf-8`, `windows-1252`, `iso-8859-1` | `utf-8` |
+| `null` | ein Feld ohne Anführungszeichen mit genau diesem Text ist NULL; leer: keins | leer |
+| `empty_is_null` | `true`: ein leeres Feld ohne Anführungszeichen ist NULL | `false` |
+| `numbers` | `true`: Spalten, deren nicht leere Werte in den ersten 200 Datensätzen alle wie Zahlen aussehen, sind numerisch | `true` |
+| `decimal` | `.` (`point`) oder `,` (`comma`): das Dezimaltrennzeichen für `numbers`. Mit `comma` ist eine Spalte numerisch, wenn ihre Werte Zahlen wie `1200,50`, `-3,5`, `1.234,50`, `12.345.678` oder `42` sind (Tausenderpunkte streng in Dreiergruppen); das Grid sortiert und filtert sie dann nach dem Wert (`1.234,50` = 1234,5), der Text wird unverändert angezeigt. Ein Filterwert wird im selben Format getippt (`> 1000,5`); ein Punkt geht auch, wo er keine Tausendergruppe ist (`> 1000.5`, aber `1.000` heißt 1000) | `.` |
+| `skip` | Zeilen, die vor der Kopfzeile übersprungen werden | `0` |
+
+```text
+open kunden.csv
+open -o delimiter=semicolon -o encoding=windows-1252 ~/export/umsatz.csv
+open -t csv -o header=false -o skip=2 report.txt
+dbcc -c "open -o null=NULL dump.csv" --format json
+```
 
 ### history
 
@@ -840,7 +945,7 @@ Ohne Argument: alle Befehle mit Usage und Beschreibung. `help <befehl>`: Usage, 
 
 ---
 
-## 12. Vervollständigung
+## 13. Vervollständigung
 
 Die Vervollständigungsliste öffnet sich **nur** auf `Ctrl+Space` oder die Alternativtaste (`completion_key_alt`, Standard `Ctrl+O`) – nie automatisch, ohne Ghost-Text. Sie filtert beim Weitertippen, `Enter` oder `Tab` übernimmt, `Esc` schließt, `Up`/`Down`/`PgUp`/`PgDn` bewegen. Gibt es genau einen Kandidaten, wird er direkt eingefügt. Bezeichner werden nur gequotet, wenn nötig (keine einfachen Namen, reservierte Wörter; auf PostgreSQL auch Namen mit Großbuchstaben).
 
@@ -855,7 +960,7 @@ Die Kandidaten hängen von den Tokens vor dem Cursor ab (token-basierte Heuristi
 | Sonst innerhalb eines Statements | Spalten der im Statement genannten Tabellen, dann Schlüsselwörter und Funktionen des Dialekts |
 | In Strings und Kommentaren | nichts |
 | Kommandozeile, erstes Wort | Befehle |
-| Kommandozeile, Argumente | nach dem deklarierten Argumenttyp: Objekte, Pfade, Profile, Dateien – auch nach Optionen (`cat -t view ` → Objekte) |
+| Kommandozeile, Argumente | nach dem deklarierten Argumenttyp: Objekte, Pfade, Profile, Dateien – auch nach Optionen (`cat -t view ` → Objekte); nach `file:` an einer Objekt-Position Dateinamen (`ll file:da` → `ll file:daten/`) |
 | Kommandozeile, Optionen | nach `-` die Optionsnamen des Befehls (`tail -` → `-f`, `-i`, `-k`); nach einer Option mit Wert deren deklarierte Werte (`cat -t ` → `table`, `view`, …) bzw. Werte ihres Typs; `--` beendet die Optionen |
 | Kommandozeile mit SQL | wie im Editor |
 
@@ -863,7 +968,7 @@ Metadaten kommen aus einem Cache, der beim ersten Gebrauch je Schema geladen und
 
 ---
 
-## 13. Transaktionen und Sicherheit
+## 14. Transaktionen und Sicherheit
 
 Pro Profil einstellbar:
 
@@ -888,9 +993,9 @@ Manuelle Transaktionen je Dialekt:
 
 ---
 
-## 14. Headless-Betrieb und Skripte
+## 15. Headless-Betrieb und Skripte
 
-Ohne Oberfläche läuft dbcc, wenn `-f` oder `-c` angegeben ist oder stdin kein Terminal ist. Ein Profil (`-p`) ist Pflicht; gestartet wird auf `/<profil>[/<datenbank>]`.
+Ohne Oberfläche läuft dbcc, wenn `-f` oder `-c` angegeben ist oder stdin kein Terminal ist. Ein Profil (`-p`) ist für Skripte (`-f`, stdin) Pflicht; gestartet wird auf `/<profil>[/<datenbank>]`. Ein einzelner Befehl (`-c`) darf **ohne Profil** laufen: Er startet bei `/`, wo Dateibefehle funktionieren und SQL mit `not connected: cd /<profile> first` scheitert (Exit-Code 2).
 
 ```sh
 dbcc -p shop-dev -f migrate.sql                 # Skript
@@ -899,6 +1004,8 @@ dbcc -p shop-dev -c "SELECT now()"              # SQL
 dbcc -p shop-dev < dump.sql                     # stdin
 dbcc -p shop-dev -c "cp -a orders orders_bak" --yes
 dbcc -p shop-dev -c "tail -f -i 1 events" --format json
+dbcc -c "head file:kunden.csv 5" --format csv   # eine Datei, keine Datenbank nötig
+dbcc -c "wc file:~/export/umsatz.csv"
 ```
 
 - `-c`: Ist das erste Wort ein registrierter Befehl, läuft der Lua-Befehl; sonst ist der Text SQL (auch mehrere Statements).
@@ -906,7 +1013,7 @@ dbcc -p shop-dev -c "tail -f -i 1 events" --format json
 - **Meldungen** auf stderr: Hinweise von Befehlen, Serverwarnungen (`warning (line N): …`), implizite Commits. Mit `-v` zusätzlich jedes Statement: `-- line N: <text>, 42 rows (12ms)`.
 - **Fehler** auf stderr: `ERROR at line N: <fehler>` plus das eingerückte Statement, bzw. `ERROR: <fehler>`.
 - **Rückfragen:** Schreibende Befehle scheitern ohne `--yes` mit „confirmation required; run with --yes“. In `confirm_writes`-Profilen werden schreibende Statements ohne `--yes` abgelehnt („cancelled by user“).
-- `history` gibt die Liste aus, `edit` das Replace-Skript, `help about` den About-Text (mit Hinweis auf `dbcc --licenses`). Primitive, die eine Auswahl oder den Editor brauchen, scheitern mit „not available without UI“.
+- `history` gibt die Liste aus, `edit` das Replace-Skript, `help about` den About-Text (mit Hinweis auf `dbcc --licenses`). Primitive, die eine Auswahl, ein Formular, den Dateidialog oder den Editor brauchen, scheitern mit „not available without UI“; `export` braucht dort eine Datei als Argument.
 - Passwortabfragen laufen über `/dev/tty`.
 - `Ctrl+C` (SIGINT) bricht das laufende Statement ab.
 - **`tail -f` headless:** gibt die letzten n Zeilen aus und dann jede neue Zeile, sobald sie eintrifft – `table` ohne Wiederholung des Kopfes, `csv`/`tsv` als Datensätze, `json` als **JSON Lines** (ein Objekt je Zeile, kein umschließendes Array) – bis SIGINT oder SIGTERM; dann Exit-Code 0. Ein Fehler, der das Folgen beendet (z. B. gelöschte Tabelle), ergibt Exit-Code 1. Headless behält ein folgendes Ergebnis höchstens 3.000 Zeilen im Speicher.
@@ -921,7 +1028,7 @@ dbcc -p shop-dev -c "tail -f -i 1 events" --format json
 
 ---
 
-## 15. Konfiguration
+## 16. Konfiguration
 
 Datei: `~/.config/dbcc/config.toml` (bzw. `$XDG_CONFIG_HOME/dbcc/config.toml`, oder `--config`). Fehlt sie, gelten die Standardwerte. Ist sie für Gruppe oder andere lesbar/schreibbar (weiter als 0600), warnt dbcc beim Start. dbcc schreibt neue Verbindungen selbst in diese Datei (Modus 0600) und lässt alles andere darin unverändert.
 
@@ -1062,7 +1169,7 @@ Profile verwenden ihn mit `password = "stored"` bzw. `ssh.password = "stored"`. 
 
 ### Tasten umbelegen: `[keys.<bereich>]`
 
-Jede Belegung lässt sich ändern: `aktion = "taste"`. Bereiche: `global`, `tree`, `editor`, `grid`, `form`, `cmdline`. Die Aktionsnamen stehen in der [Tastenreferenz](#16-tastenreferenz). Unbekannte Bereiche, Aktionen oder Tasten sind ein Startfehler mit Erklärung.
+Jede Belegung lässt sich ändern: `aktion = "taste"`. Bereiche: `global`, `tree`, `editor`, `grid`, `form`, `cmdline`. Die Aktionsnamen stehen in der [Tastenreferenz](#17-tastenreferenz). Unbekannte Bereiche, Aktionen oder Tasten sind ein Startfehler mit Erklärung.
 
 Tastensyntax (Groß-/Kleinschreibung der Präfixe egal):
 
@@ -1077,7 +1184,7 @@ Hinweise: Belegungen des fokussierten Bereichs haben Vorrang vor den globalen. E
 
 ---
 
-## 16. Tastenreferenz
+## 17. Tastenreferenz
 
 Die F1-Hilfe zeigt diese Tabellen aus der aktuellen Belegung (also inklusive eigener Änderungen), dazu alle Befehle; das Suchfeld filtert Tasten und Befehle. `F1` oder `Tab` in der Hilfe öffnet die About-Seite, `Esc` schließt, `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End` scrollen. Auf der About-Seite öffnet `L` die Lizenzen der Fremdbibliotheken (scrollen mit `Up`/`Down`/`PgUp`/`PgDn`/`Home`/`End`; `L` oder `Esc` zurück); `Esc` schließt die About-Seite.
 
@@ -1151,6 +1258,7 @@ Die Bearbeitungstasten stehen in [Abschnitt 7](#der-editor); sie sind nicht umbe
 | `C` | `copy_row` | Zeile kopieren |
 | `[` | `prev_result` | Vorheriger Ergebnistab |
 | `]` | `next_result` | Nächster Ergebnistab |
+| `e` | `export` | Ergebnis exportieren: Typliste, Einstellungen, Dateidialog (siehe [Export eines Ergebnisses](#export-eines-ergebnisses)) |
 | `Alt+X` | `close_result` | Ergebnistab schließen (Messages bleibt) |
 | `Alt+Q` | `close_all_results` | Alle Ergebnistabs schließen |
 
@@ -1189,7 +1297,7 @@ Fest: `Esc` leert die Zeile und wechselt zum Editor.
 
 ---
 
-## 17. Eigene Befehle in Lua
+## 18. Eigene Befehle in Lua
 
 Jeder Befehl von dbcc – auch `cd`, `ll`, `cp` und `cat` – ist ein Lua-Skript. Go stellt nur Primitive bereit (Abfragen ausführen, Objekte auflösen, Ergebnisse anzeigen, nachfragen …); was ein Befehl tut, steht vollständig im Skript. Eigene Skripte ergänzen die eingebauten Befehle oder ersetzen sie. Sie verhalten sich wie eingebaute: Vervollständigung, `help`, Headless-Betrieb, Tasten und Baumaktionen funktionieren ohne weiteres Zutun.
 
@@ -1202,6 +1310,8 @@ Inhalt dieses Abschnitts:
 - [Einen Befehl deklarieren: `dbcc.command`](#einen-befehl-deklarieren-dbcccommand)
 - [Argumente und Flags beim Aufruf](#argumente-und-flags-beim-aufruf)
 - [Schreibende Befehle (`write = true`)](#schreibende-befehle-write--true)
+- [Exportformate: `dbcc.exporter`](#exportformate-dbccexporter)
+- [Importformate: `dbcc.importer`](#importformate-dbccimporter)
 - [Der Kontext `ctx`](#der-kontext-ctx)
 - [Primitive](#primitive)
 - [Parameter und Platzhalter](#parameter-und-platzhalter)
@@ -1215,7 +1325,7 @@ Inhalt dieses Abschnitts:
 
 ### Wo die Skripte liegen
 
-**Eingebaute Befehle** sind in das Binary eingebettet; es gibt sie also auf jedem Rechner, auf den man nur die Datei `dbcc` kopiert. Ihr Quelltext liegt im Repository unter `internal/script/commands/` – eine Datei je Befehl, der Dateiname ist der Befehlsname:
+**Eingebaute Befehle** sind in das Binary eingebettet; es gibt sie also auf jedem Rechner, auf den man nur die Datei `dbcc` kopiert. Ihr Quelltext liegt im Repository unter `internal/script/commands/` – eine Datei je Befehl, der Dateiname ist der Befehlsname; die Exportformate liegen in `exporter_<name>.lua`, die Importformate in `importer_<name>.lua`:
 
 | Datei | Befehl | Datei | Befehl |
 |---|---|---|---|
@@ -1228,7 +1338,9 @@ Inhalt dieses Abschnitts:
 | `grep.lua` | [`grep`](#grep) | `tail.lua` | [`tail`](#tail) |
 | `head.lua` | [`head`](#head) | `wc.lua` | [`wc`](#wc) |
 | `help.lua` | [`help`](#help) | `kill.lua` | [`kill`](#kill) (schreibt) |
-| `history.lua` | [`history`](#history) | | |
+| `history.lua` | [`history`](#history) | `exporter_csv.lua` | Exportformat `csv` |
+| `exporter_json.lua` | Exportformat `json` | `importer_csv.lua` | Importformat `csv` |
+| `open.lua` | [`open`](#open) | | |
 
 Die eingebauten Skripte verwenden nur die öffentliche API, die unten beschrieben ist – sie sind die besten Beispiele. Ohne Repository holt man sie mit
 
@@ -1361,8 +1473,8 @@ Die folgenden Abschnitte beschreiben jedes Feld und jedes Primitiv; danach folge
 | `usage` | string | Usage-Zeile für Hilfe und Fehlermeldungen. Ohne Angabe erzeugt: `name [-a] [-t string] <object> [int] [string ...]` |
 | `help` | string | Beschreibung (Befehlsliste von `help`, `help <befehl>`, Hilfe-Overlay) |
 | `args` | Liste von strings | Positionsargumente mit Typ: `object`, `path`, `profile`, `file`, `int`, `string`. Endung `?` = optional, `...` = beliebig viele (auch keins; nur als letztes). Pflichtargumente dürfen nicht nach optionalen stehen. Der Typ steuert die Vervollständigung (Objekte, Pfade, Profile, Dateien) und die Prüfung (`int`). |
-| `flags` | Tabelle Name → Typ | `bool` (Schalter ohne Wert) oder einer der Argumenttypen (Flag mit Wert; `int` wird geprüft). Namen: Buchstabe, dann Buchstaben, Ziffern, `_`, `-`. |
-| `flag_values` | Tabelle Flag → Liste von strings | Werte, die die Vervollständigung für ein Flag mit Wert anbietet (z. B. `flag_values = { t = { "table", "view" } }` bei `cat`). Andere Werte bleiben erlaubt. |
+| `flags` | Tabelle Name → Typ | `bool` (Schalter ohne Wert) oder einer der Argumenttypen (Flag mit Wert; `int` wird geprüft). Ein Werttyp mit der Endung `...` (`o = "string..."`) darf mehrfach angegeben werden; `run` bekommt dann eine Liste aller Werte. Namen: Buchstabe, dann Buchstaben, Ziffern, `_`, `-`. |
+| `flag_values` | Tabelle Flag → Liste von strings, oder `"exporters"` | Werte, die die Vervollständigung für ein Flag mit Wert anbietet (z. B. `flag_values = { t = { "table", "view" } }` bei `cat`). `"exporters"` bietet die Namen der registrierten Exportformate an (`export -t`). Andere Werte bleiben erlaubt. |
 | `write` | boolean | `true`: Der Befehl schreibt – siehe [Schreibende Befehle](#schreibende-befehle-write--true) |
 | `run` | function, Pflicht | `run(ctx, args, flags)` |
 
@@ -1377,7 +1489,7 @@ Jede ungültige Deklaration lässt das ganze Skript scheitern. Die Meldungen (mi
 | `run` fehlt | `dbcc.command b8: field "run" must be a function` |
 | unbekannter Argumenttyp | `args[1]: unknown type "number" (object, path, profile, file, int, string)` |
 | Reihenfolge | `args[2]: a required argument cannot follow an optional one`, `args[1]: a variadic argument must be the last one` |
-| unbekannter Flagtyp | `flags.all: unknown type "boolean" (bool, object, path, profile, file, int, string)` |
+| unbekannter Flagtyp | `flags.all: unknown type "boolean" (bool, object, path, profile, file, int, string; a value type may end in "..." to repeat the flag)`; `flags.o: a bool flag cannot be repeated ("..." needs a value type)` |
 | `flag_values` ohne passendes Flag | `flag_values.x: no such flag with a value` |
 
 ### Argumente und Flags beim Aufruf
@@ -1385,7 +1497,7 @@ Jede ungültige Deklaration lässt das ganze Skript scheitern. Die Meldungen (mi
 `run(ctx, args, flags)` bekommt:
 
 - `args`: die Positionsargumente als Liste von **Strings** (auch `int`-Argumente – mit `tonumber` umwandeln). Fehlende optionale Argumente sind `nil`.
-- `flags`: die angegebenen Flags; Schalter sind `true`, Flags mit Wert enthalten den Wert als String. Nicht angegebene Flags fehlen (`nil`).
+- `flags`: die angegebenen Flags; Schalter sind `true`, Flags mit Wert enthalten den Wert als String, wiederholbare Flags (`"string..."`) eine Liste von Strings in der angegebenen Reihenfolge (`export -o a=1 -o b=2` → `flags.o = { "a=1", "b=2" }`). Nicht angegebene Flags fehlen (`nil`).
 
 Die Zeile wird wie in einer Shell in Wörter zerlegt: Leerzeichen trennen, `'…'` und `"…"` gruppieren (in `"…"` maskiert `\` ein `"` oder `\`), `\` außerhalb maskiert das nächste Zeichen. Ein `;` am Zeilenende wird ignoriert. Danach gilt:
 
@@ -1418,6 +1530,215 @@ Weitere Meldungen: `flag -n takes no value`, `flag -m needs a int value`, `flag 
 
 Auch Befehle ohne `write = true` können mit `ctx:exec` schreiben; dann gelten nur die Schutzmechanismen, die auch für getipptes SQL gelten (Lese-Schutz des Profils: „read-only profile: statement rejected“, `confirm_writes`). Für alles, was Daten ändert, ist `write = true` richtig.
 
+### Exportformate: `dbcc.exporter`
+
+Ein Exportformat ist ein Lua-Plugin: Jedes Skript – ein eingebautes oder eines im eigenen Befehlsverzeichnis – kann beim Laden mit `dbcc.exporter{…}` Formate registrieren, zusätzlich zu Befehlen oder statt ihrer. Formate werden genau wie Befehle geladen, ersetzt und zurückgefallen: Ein eigenes Format mit dem Namen eines eingebauten ersetzt es, ein kaputtes Skript lässt das eingebaute aktiv, `reload` installiert neue Formate zur Laufzeit, `--export-commands` schreibt die eingebauten mit heraus (`exporter_csv.lua`, `exporter_json.lua` – die besten Vorlagen). `export` und die Grid-Taste `e` listen jedes registrierte Format; `help export` zeigt sie mit ihren Optionen.
+
+```lua
+dbcc.exporter{
+  name       = "csv",                            -- ^[a-z][a-z0-9_-]*$, Pflicht
+  title      = "CSV (comma-separated values)",   -- in der Typliste; Standard: name
+  help       = "…",                              -- optional
+  extensions = { "csv" },                        -- die erste ist die Standardendung
+  options    = {                                 -- Einstellungsformular und -o name=value
+    { name = "delimiter", label = "Delimiter", type = "choice",
+      choices = { { value = ",", label = "comma  ," }, { value = ";", label = "semicolon  ;" } },
+      default = "," },
+    { name = "header", label = "Header row", type = "bool", default = true,
+      help = "first line with the column names" },
+  },
+  write = function(ctx, src, out, opts) … end,   -- Pflicht
+}
+```
+
+| Feld | Typ | Bedeutung |
+|---|---|---|
+| `name` | string, Pflicht | wie bei Befehlen: Kleinbuchstaben, Ziffern, `_`, `-`; für `export -t` und `ctx:export_with` |
+| `title` | string | Beschriftung in der Typliste und den Dialogtiteln; Standard `name` |
+| `help` | string | Beschreibung |
+| `extensions` | Liste von strings | Dateiendungen ohne Punkt (ein führender Punkt wird entfernt); `export datei.ext` wählt das Format danach (ohne Rücksicht auf Groß-/Kleinschreibung), der Dateidialog hängt die erste an einen Namen ohne Endung an und blendet andere Dateien ab |
+| `options` | Liste von Optionen | siehe unten; steuert das Einstellungsformular und prüft `-o` |
+| `write` | function, Pflicht | `write(ctx, src, out, opts)`, siehe unten |
+
+Eine **Option** ist `{ name=, label=, help=, type=, default=, choices= }`: `name` (Pflicht, `^[a-z][a-z0-9_]*$`, eindeutig), `label` (Standard `name`), `help` (eine Zeile, abgeblendet unter dem Feld), `type` (Pflicht) `"string"` (Eingabefeld), `"int"` (Eingabefeld für Ziffern und ein führendes `-`), `"bool"` (Checkbox) oder `"choice"` (Auswahl; `choices` ist eine Liste von Strings oder `{ value=, label= }`). `default` muss zum Typ passen; ohne: `""`, `0`, `false`, die erste Auswahl. Werte aus `-o` sind Text: `true`/`false`/`yes`/`no`/`1`/`0` bei `bool`, ganze Zahlen bei `int`; eine `choice` nimmt ihren Wert oder das erste Wort ihres Labels (`-o delimiter=tab`). Eine ungültige Deklaration lässt das Skript scheitern, z. B. `dbcc.exporter md: options[1]: width: unknown type "float" (string, int, bool, choice)`, `dbcc.exporter md: options[2]: duplicate option "a"`, `a: default "yes" does not fit type bool`, `dbcc.exporter: unknown field(s) [writer] (name, title, help, extensions, options, write)`.
+
+**`write(ctx, src, out, opts)`** wird von `ctx:export_with` (und damit von `export`) mit dem `ctx` des laufenden Befehls aufgerufen; dbcc hat die Datei schon geöffnet und schließt sie danach. `opts` enthält jede Option, typisiert (`string`, Zahl, Boolean) und mit den Standardwerten ergänzt. `src` und `out` gelten nur während des Aufrufs:
+
+| | |
+|---|---|
+| `src.columns` | Liste von `{ name=, type=, numeric=, binary=, decimal= }`: `type` ist der Typname der Datenbank (`INT`, `VARCHAR` …, leer bei berechneten Ergebnissen), `numeric` und `binary` wie im Grid, `decimal` `"."` oder `","` (eine Dateispalte mit Dezimalkomma) |
+| `src.title` | der Titel des Ergebnistabs |
+| `src:each(fn)` | ruft `fn(row)` für jede Zeile des **ganzen** Ergebnisses der Reihe nach auf (Filter und Sortierung des Grids angewandt, Cursor fortgesetzt, Statement bei Bedarf erneut ausgeführt – wie bei [`export`](#export) beschrieben); nur einmal aufrufbar. `row` ist eine Liste von **Strings** (der Text, den das Grid zeigt; Binärwerte als `<BLOB n bytes>`) mit **`nil` für NULL** – für die Breite `#src.columns` nehmen, nicht `#row`. Zählt die Zeilen und schreibt die Fortschrittsmeldungen |
+| `out:write(s, …)` | schreibt Strings (und Zahlen, wie `tostring`) gepuffert in die Datei; Fehler bei Ein-/Ausgabefehlern |
+| `out.path` | der Dateipfad |
+
+Jeder Fehler – ein eigenes `error(…)`, der eines Primitivs, ein Ein-/Ausgabefehler, `F8` – beendet den Export: Eine neue Datei wird entfernt, eine vorhandene (mit `force`) bleibt, wie sie war. Das gilt auch, wenn `write` den Fehler von `src:each` mit `pcall` abfängt – ein unvollständiger Datenstrom lässt den Export immer scheitern; der Fehler beendet den Befehl wie üblich (`export: /home/anna/.config/dbcc/commands/markdown.lua:17: …`).
+
+Hilfsfunktionen für Formate (siehe [`dbcc.fmt`](#dbcccommands-und-dbccfmt)): `dbcc.fmt.csv(values, n, opts)` kodiert einen CSV-Datensatz (der schnelle Weg des Formats `csv`), `dbcc.fmt.json(v)` den JSON-Text eines Werts, `dbcc.fmt.cell(v)` den Text eines Werts (`nil` → `""`).
+
+**Primitive für den Ablauf** (von `export.lua` benutzt, auch für eigene Befehle): `ctx:export_with(name, file, opts)` führt ein Format aus, `ctx:form(fields, opts)` zeigt ein Einstellungsformular für so deklarierte Optionen, `ctx:save_file(opts)` den Dateidialog, `ctx:result_info()` beschreibt das aktive Ergebnis, `dbcc.exporters()` listet die Formate – siehe [Primitive](#primitive).
+
+**Beispiel: eine Markdown-Tabelle.** Als `~/.config/dbcc/commands/markdown.lua` speichern, `F9`, `reload` – `e` im Grid bietet jetzt „Markdown table“ an, und `export bericht.md` wählt es über die Endung:
+
+```lua
+-- markdown.lua: export a result as a Markdown table
+local function cell(v)
+  -- pipes would end the cell, line breaks the row
+  return (dbcc.fmt.cell(v):gsub("|", "\\|"):gsub("\r?\n", "<br>"))
+end
+
+dbcc.exporter{
+  name       = "markdown",
+  title      = "Markdown table",
+  help       = "A table for README files and wikis",
+  extensions = { "md" },
+  options = {
+    { name = "heading", label = "Title as heading", type = "bool", default = true },
+    { name = "null", label = "Text for NULL", type = "string", default = "" },
+  },
+  write = function(ctx, src, out, opts)
+    if opts.heading then out:write("# ", src.title, "\n\n") end
+    local head, rule = {}, {}
+    for i, c in ipairs(src.columns) do
+      head[i] = cell(c.name)
+      rule[i] = c.numeric and "---:" or "---"   -- numbers right-aligned
+    end
+    out:write("| ", table.concat(head, " | "), " |\n|", table.concat(rule, "|"), "|\n")
+    local n = #src.columns
+    src:each(function(row)
+      local cells = {}
+      for i = 1, n do
+        cells[i] = row[i] == nil and opts.null or cell(row[i])
+      end
+      out:write("| ", table.concat(cells, " | "), " |\n")
+    end)
+  end,
+}
+```
+
+**Export aus einem eigenen Befehl.** `ctx:export_with` braucht einen vom Benutzer gewählten Pfad (siehe [Sandbox](#sandbox)) – ein `file`-Argument deklarieren oder mit `ctx:save_file` fragen:
+
+```lua
+dbcc.command{ name = "report", args = { "file" }, run = function(ctx, args)
+  ctx:export_with("markdown", args[1], { options = { heading = false } })   -- report ~/bericht.md
+end }
+
+dbcc.command{ name = "report2", run = function(ctx)
+  local path = ctx:save_file{ title = "Report", name = "bericht.md", extensions = { "md" } }
+  if path then ctx:export_with("markdown", path, { force = true }) end
+end }
+```
+
+Bei sehr großen Ergebnissen die Arbeit je Zeile klein halten: die Zeile mit `table.concat` bauen und mit einem `out:write` schreiben.
+
+### Importformate: `dbcc.importer`
+
+Ein Importformat liest eine Datei für das Grid – und für `open`, `ll`/`head`/`tail`/`wc`/`cat file:…`. Es wird wie ein Exportformat registriert: Jedes Skript kann beim Laden `dbcc.importer{…}` aufrufen; Formate werden genau wie Befehle und Exportformate geladen, ersetzt, zurückgefallen und mit `reload` neu geladen, und `--export-commands` schreibt das eingebaute mit heraus (`importer_csv.lua` – die beste Vorlage). `help open` listet sie.
+
+```lua
+dbcc.importer{
+  name       = "csv",                            -- ^[a-z][a-z0-9_-]*$, Pflicht
+  title      = "CSV (comma-separated values)",   -- Typliste, Dialogtitel; Standard: name
+  help       = "…",
+  extensions = { "csv", "tsv", "txt" },          -- wählt das Format für eine Datei
+  options    = { … },                            -- genau wie bei dbcc.exporter
+  open = function(ctx, src, opts)                -- Pflicht
+    …
+    return { columns = { "id", "name" }, next = function() return row end }
+  end,
+}
+```
+
+Die Felder und die Optionsdeklarationen sind die von [`dbcc.exporter`](#exportformate-dbccexporter) (dieselben Prüfungen, dieselben Meldungen mit `dbcc.importer`), mit `open` statt `write`.
+
+**`open(ctx, src, opts)`** wird jedes Mal aufgerufen, wenn die Datei von vorn gelesen wird – beim Öffnen und erneut für eine vorherige Seite, Neu ausführen (F5), einen Export der ganzen Datei und nach `reload`. `opts` enthält jede Option, typisiert und mit den Standardwerten ergänzt. Rückgabe ist eine Tabelle:
+
+- `columns`: eine nicht leere Liste von Namen oder von `{ name=, numeric=, decimal= }` (`numeric = true`: rechtsbündig, als Zahlen sortiert und gefiltert; `decimal = ","`: die Werte haben ein Dezimalkomma und ggf. Tausenderpunkte und werden so gelesen wie mit `dbcc.fmt.number(v, ",")`; `decimal` ohne `numeric = true` ist ein Fehler: `columns[1].decimal needs numeric = true`). Namen dürfen nicht leer sein; Duplikate sind erlaubt.
+- `next`: eine Funktion, die die **nächste Zeile** als Liste liefert, oder `nil` am Ende. Werte: Strings wie sie sind, Zahlen so, wie `dbcc.fmt.cell` sie schreibt (`3`, nicht `3.0`), Booleans `true`/`false`, `nil` NULL. Eine kürzere Zeile wird mit NULL aufgefüllt; eine längere ist ein Fehler: `import f.csv (csv): record 3 has 4 fields, more than the 3 columns`.
+
+dbcc ruft `next` einmal je Zeile auf, nur so weit, wie das Grid es braucht (Pull-Modell – eine Seite von 3.000 Zeilen liest 3.000 Zeilen, nicht die Datei). Zustand gehört in lokale Variablen von `open` (Closures). `next` darf auf nichts warten: Beim Blättern läuft es außerhalb eines Befehls, dort werfen `ctx`-Methoden `ctx is only valid while its command runs`, und `F8` hält es an.
+
+**`src`** – die Datei, gültig bis sie geschlossen wird; jede Methode wirft bei einem Ein-/Ausgabefehler einen Lua-Fehler (`src:line: kunden.csv: …`):
+
+| | |
+|---|---|
+| `src.path`, `src.name`, `src.size` | absoluter Pfad, Dateiname, Größe in Bytes |
+| `src:encoding(name)` | `"utf-8"` (Standard), `"windows-1252"`, `"iso-8859-1"`; vor dem ersten Lesen (sonst ein Fehler). Ungültiges UTF-8 wird zu U+FFFD |
+| `src:skip_bom()` | überspringt ein UTF-8-Byte-Order-Mark am Anfang; `true`, wenn eines da war |
+| `src:line()` | die nächste Zeile ohne Zeilenende (LF oder CRLF), `nil` am Ende |
+| `src:read(n)` | bis zu `n` Bytes als Text (zerschneidet nie ein UTF-8-Zeichen), `nil` am Ende |
+| `src:peek(n)` | bis zu `n` Bytes (höchstens 64 KiB) ab der aktuellen Position, **ohne** sie zu verbrauchen – z. B. um das Trennzeichen zu erkennen |
+| `src:csv(opts)` | ein CSV-Leser `r`: `r:read()` liefert die Felder des nächsten Datensatzes als Liste und ihre Anzahl (`nil` am Ende); `r.record` und `r.line` sind die Nummer dieses Datensatzes und die Zeile, in der er begann. `opts`: `delimiter` (ein Zeichen, Standard `,`), `quote` (ein Zeichen, Standard `"`), `null` (ein Feld ohne Anführungszeichen mit diesem Text ist `nil`), `empty_is_null` (ein leeres Feld ohne Anführungszeichen ist `nil`); `r:read(true)` ignoriert `null`/`empty_is_null` (für eine Kopfzeile). Anführungszeichen wie in [Abschnitt 10](#kodierungen-anführungszeichen-null) beschrieben |
+
+`line`, `read`, `peek` und `csv` dürfen nacheinander auf derselben gepufferten Datei gemischt werden.
+
+**Primitive für Dateien** (von `open.lua`, `ll.lua`, … benutzt – auch für eigene Befehle): `ctx:file_grid`, `ctx:file_count`, `ctx:file_info`, `ctx:open_file` und `ctx:resolve("file:…")` – siehe [Primitive](#primitive). Ein Befehl liest nur Dateien, die der Benutzer gewählt hat: ein `object`-Argument deklarieren (der Benutzer tippt `file:<pfad>`) oder ein `file`-Argument, oder mit `ctx:open_file` fragen ([Sandbox](#sandbox)):
+
+```lua
+dbcc.command{ name = "peek", args = { "object" }, run = function(ctx, args)
+  local f = ctx:resolve(args[1])                       -- peek file:kunden.csv
+  if f.kind ~= "file" then error("peek reads files: peek file:<path>", 0) end
+  ctx:file_grid(f, { limit = 5, title = "peek " .. f.name })
+end }
+```
+
+**Beispiel: Spalten fester Breite.** Als `~/.config/dbcc/commands/fixed.lua` speichern, `F9`, `reload` – dann `open report.fw`, `ll file:report.fw` oder `open -t fixed -o widths=4,12,8 liste.prn`:
+
+```lua
+-- fixed.lua: read files with fixed-width columns, e.g. reports of old systems
+--   id   name      city
+--   1    Anna      Köln
+dbcc.importer{
+  name       = "fixed",
+  title      = "Fixed-width columns",
+  help       = "Columns at fixed positions; the first line names them",
+  extensions = { "fw", "prn" },
+  options = {
+    { name = "widths", label = "Column widths", type = "string", default = "5,10,10",
+      help = "characters per column, separated by commas" },
+    { name = "encoding", label = "Encoding", type = "choice",
+      choices = { "utf-8", "windows-1252", "iso-8859-1" }, default = "utf-8" },
+  },
+  open = function(ctx, src, opts)
+    src:encoding(opts.encoding)
+    local widths = {}
+    for w in opts.widths:gmatch("%d+") do widths[#widths + 1] = tonumber(w) end
+    if #widths == 0 then error("widths: give at least one number", 0) end
+    -- split cuts a line into trimmed fields (positions count bytes: fine for ASCII layouts)
+    local function split(line)
+      local out, pos = {}, 1
+      for i, w in ipairs(widths) do
+        local s = line:sub(pos, pos + w - 1)
+        out[i] = s:match("^%s*(.-)%s*$")
+        pos = pos + w
+      end
+      return out
+    end
+    local first = src:line()
+    if not first then error(src.name .. " is empty", 0) end
+    local header = split(first)
+    for i, h in ipairs(header) do
+      if h == "" then header[i] = "col" .. i end
+    end
+    return {
+      columns = header,
+      next = function()
+        local line = src:line()
+        while line == "" do line = src:line() end   -- skip empty lines
+        if line == nil then return nil end           -- end of file
+        local row = split(line)
+        for i, v in ipairs(row) do
+          if v == "" then row[i] = nil end          -- an empty field is NULL
+        end
+        return row
+      end,
+    }
+  end,
+}
+```
+
+Das Format `csv` ist das größere Beispiel: Trennzeichen-Erkennung mit `src:peek`, eine Kopfzeile, numerische Spalten aus vorausgelesenen Datensätzen.
+
 ### Der Kontext `ctx`
 
 `ctx` ist nur gültig, solange sein Befehl läuft (ein in einer Variablen aufbewahrtes `ctx` scheitert später mit „ctx is only valid while its command runs“). Methoden immer mit Doppelpunkt aufrufen: `ctx:query(…)`; `ctx.query(…)` scheitert mit „call it with a colon“.
@@ -1432,10 +1753,11 @@ Felder (nur lesen):
 | `ctx.has_schemas` | `true` bei PostgreSQL und SQL Server (Pfade mit Schemaebene) |
 | `ctx.profile` | `{name=, driver=, database=, read_only=, autocommit=, confirm_writes=}` oder `nil`; `driver` ist der Konfigurationswert (`mysql` auch bei MariaDB), `database` nur, wenn im Profil gesetzt |
 | `ctx.conn` | nur bei einem mit `ctx:on` gebundenen Kontext: der Verbindungsname |
+| `ctx.ui` | `true` in der Oberfläche, `false` headless: ob `ctx:pick`, `ctx:form`, `ctx:save_file` und `ctx:open_file` nachfragen können (`export.lua` und `open.lua` prüfen das vor dem ersten Dialog) |
 
 Beispiel (echte Ausgabe auf MariaDB, Profil `doc` mit `database = "dbcc_doc"`): `ctx.path.str` = `/doc/dbcc_doc`, `ctx.path.level` = `database`, `ctx.dialect` = `mariadb`, `ctx.profile.driver` = `mysql`, `ctx.has_schemas` = `false`.
 
-**`ctx:on(target)`** liefert einen Kontext, der an eine andere Verbindung gebunden ist: `target` ist ein Profilname, ein Objekt aus `ctx:resolve` oder eine Pfadtabelle; die Verbindung wird bei Bedarf geöffnet. Bei einem gebundenen Kontext beziehen sich `dialect`, `has_schemas`, `profile`, alle SQL-Helfer (`quote`, `limit`) und die Ausführung (`query`, `exec`, `grid`, `resolve` mit einfachen Namen) auf diese Verbindung; `ctx.path` bleibt der aktuelle Pfad. Ist `target` die aktuelle Verbindung, folgt der Kontext ihr wie `ctx`. Faustregel: **Objekte immer über `ctx:on(obj)` ansprechen**, denn ein Objekt aus dem Baum oder ein absoluter Pfad kann auf einer anderen Verbindung liegen.
+**`ctx:on(target)`** liefert einen Kontext, der an eine andere Verbindung gebunden ist: `target` ist ein Profilname, ein Objekt aus `ctx:resolve` oder eine Pfadtabelle; die Verbindung wird bei Bedarf geöffnet. Bei einem gebundenen Kontext beziehen sich `dialect`, `has_schemas`, `profile`, alle SQL-Helfer (`quote`, `limit`) und die Ausführung (`query`, `exec`, `grid`, `resolve` mit einfachen Namen) auf diese Verbindung; `ctx.path` bleibt der aktuelle Pfad. Ist `target` die aktuelle Verbindung, folgt der Kontext ihr wie `ctx`. Faustregel: **Objekte immer über `ctx:on(obj)` ansprechen**, denn ein Objekt aus dem Baum oder ein absoluter Pfad kann auf einer anderen Verbindung liegen. Für ein Dateiobjekt (`ctx:resolve("file:…")`) liefert `ctx:on` den Kontext unverändert – eine Datei hat keine Verbindung.
 
 ### Primitive
 
@@ -1449,7 +1771,7 @@ Alle Primitive blockieren, bis ihre Datenbankarbeit erledigt ist, und lösen bei
 | `ctx:abspath(path)` | löst einen Pfad ohne Seiteneffekte auf (`"."` oder `nil` = aktueller, `".."`, relative und absolute Pfade); gibt eine Pfadtabelle zurück. `path` darf auch eine Pfadtabelle sein |
 | `ctx:objects(path, kinds)` | unter `/conn`: die Datenbanken; unter einer Datenbank eines Schema-Dialekts: die Schemata; sonst die Objekte der Datenbank bzw. des Schemas, gefiltert nach `kinds` (String oder Liste: `database`, `schema`, `table`, `view`, `materialized view`, `procedure`, `function`, `trigger`, `event`, `sequence`; `nil` = alle). Elemente `{name=, kind=, comment=, system=}`. An `/` ein Fehler: dort `ctx:profiles()` verwenden |
 | `ctx:profiles()` | alle Profile der Konfiguration, nach Namen sortiert: `{name=, driver=, host=, port=, socket=, user=, database=, read_only=, autocommit=, confirm_writes=, open=, current=}`; nicht gesetzte Texte sind `""`, `port` ist eine Zahl, `open` = Verbindung offen, `current` = aktuelles Profil |
-| `ctx:resolve(name, kinds)` | löst einen Objektnamen auf, siehe unten |
+| `ctx:resolve(name, kinds)` | löst einen Objektnamen auf, siehe unten; `file:<pfad>` liefert ein Dateiobjekt `{ kind="file", name=, path= }` (`tostring` = Pfad) ohne Verbindung und ohne das Dateisystem zu berühren |
 | `ctx:on(target)` | an die Verbindung von `target` gebundener Kontext (siehe oben) |
 | `ctx:meta(obj)` | Metadaten einer Tabelle, View oder Materialized view (`obj` = Name oder Objekt), siehe [Metadaten-Tabelle](#metadaten-tabelle-von-ctxmeta) |
 | `ctx:source(obj, kind)` | Quelltext einer View, Prozedur, Funktion, eines Triggers oder Events (`kind` optional, schränkt die Suche ein) |
@@ -1515,7 +1837,12 @@ res[3].msg    --> nil          (NULL)
 | `ctx:text(str, lexer, opts)` | Text in einem Tab: `lexer = "sql"` = SQL-Lexer des Dialekts, sonst ein Chroma-Lexername (`"lua"`, `"json"` …), `nil` = Klartext; `opts.title` (Standard: Befehlsname) |
 | `ctx:message(msg)` | Eintrag im Messages-Log; `msg` wird mit `tostring` umgewandelt |
 | `print(...)` | wie `ctx:message`, Argumente durch Tabulatoren getrennt; auch beim Laden eines Skripts nutzbar |
-| `ctx:export(file, opts)` | schreibt das aktive Ergebnis (den aktuellen Ergebnistab) als `.csv` oder `.json` (Format aus der Endung) wie `export`: der offene Cursor wird bis zum Ende gelesen, ein lokaler Filter angewandt, eine lokale Sortierung lädt erst alle Zeilen. `~/` wird expandiert. `opts.force = true` überschreibt eine vorhandene Datei, `opts.progress` = Zeilenabstand der Fortschrittsmeldungen (Standard 10.000, 0 = keine). Gibt die Zahl der geschriebenen Zeilen zurück. Bei Fehlern wird keine halbe Datei hinterlassen |
+| `ctx:export(file, opts)` | schreibt das aktive Ergebnis (den aktuellen Ergebnistab) mit den Standardeinstellungen als `.csv` oder `.json` (Format aus der Endung): der offene Cursor wird bis zum Ende gelesen, ein lokaler Filter angewandt, eine lokale Sortierung lädt erst alle Zeilen. `~/` wird expandiert. `opts.force = true` überschreibt eine vorhandene Datei, `opts.progress` = Zeilenabstand der Fortschrittsmeldungen (Standard 10.000, 0 = keine). Gibt die Zahl der geschriebenen Zeilen zurück. `file` muss ein Pfad sein, den der Benutzer in diesem Aufruf gewählt hat (ein `file`-Argument oder -Flag oder aus `ctx:save_file`), wie bei `ctx:export_with` – siehe [Sandbox](#sandbox). Bei Fehlern gehen keine Daten verloren (wie bei `ctx:export_with`). (Bleibt für Skripte erhalten; `export` selbst benutzt `ctx:export_with`.) |
+| `ctx:export_with(name, file, opts)` | führt das [Exportformat](#exportformate-dbccexporter) `name` auf dem aktiven Ergebnis aus und gibt die Zahl der geschriebenen Zeilen zurück. `file` muss ein Pfad sein, den der Benutzer in diesem Aufruf gewählt hat – der Wert eines `file`-Arguments oder -Flags des Befehls oder ein Pfad aus `ctx:save_file` –, sonst: `ctx:export_with: <path> was not chosen by the user: …` (siehe [Sandbox](#sandbox)). `opts.options` = Tabelle Option → Wert (Text wie aus `-o` oder Lua-Werte), gegen die Deklaration geprüft und mit den Standardwerten ergänzt; `opts.force`, `opts.progress` und `~/` wie bei `ctx:export`. Die Datei wird geöffnet, bevor `write` läuft (eine vorhandene scheitert ohne `force`: `<file> already exists; overwrite with export -f …`), und bei jedem Fehler entfernt; mit `force` wird eine vorhandene Datei erst nach vollständigem Export ersetzt (temporäre Datei und Umbenennen, siehe [`export`](#export)), ein Fehler lässt sie also unverändert. Innerhalb eines Exporters nicht erlaubt, ebenso wenig `ctx:export`. Fehler: `unknown export type "x" (types: csv, json)`, `export type csv: unknown option "sep" (options: …)`, `no active result to export`, `ctx:export_with cannot run inside an exporter` |
+| `ctx:result_info()` | das aktive Ergebnis: `{ title=, columns={ {name=, type=, numeric=}, … }, loaded=, capped= }` (`loaded` = Zeilen im Speicher), oder `nil`, wenn es keines gibt |
+| `ctx:file_grid(file, opts)` | öffnet eine Datei in einem Ergebnistab über ein [Importformat](#importformate-dbccimporter) – lazy gelesen und seitenweise wie ein Abfrageergebnis (headless: jede Zeile im `--format` ausgegeben). `file`: ein Objekt aus `ctx:resolve("file:…")`, `"file:<pfad>"` oder ein Pfad – ein vom Benutzer gewählter Pfad (unten). `opts.importer` (Standard: die für den Pfad in dieser Sitzung gemerkten Einstellungen, sonst nach Endung: `no import type for "x.dat" (extensions: .csv, .tsv, .txt; types: csv)`), `opts.options` (geprüft und ergänzt wie Exporter-Optionen; ausdrückliche `importer`/`options` werden für den Pfad gemerkt), `opts.limit` (nur die ersten n Datensätze), `opts.tail` (nur die letzten n: bis zum Ende lesen und n behalten), `opts.title` (Standard: der Dateiname) |
+| `ctx:file_count(file, opts)` | die Zahl der Datensätze (bis zum Ende gelesen, nichts behalten; `F8` bricht ab) |
+| `ctx:file_info(file, opts)` | `{ path=, name=, size=, modified="2026-11-25 14:03:11", importer=, options={…}, columns={ {name=, numeric=, decimal=}, … } }` – öffnet das Format, liest die Spalten, schließt |
 
 `opts.follow` von `ctx:grid`: `follow.sql` ist eine Abfrage mit genau einem `?` für den zuletzt gesehenen Wert der Ergebnisspalte `follow.key` und liefert die neueren Zeilen aufsteigend nach ihr sortiert. Sie läuft alle `interval` Sekunden (Standard 2, mindestens 0.5) im Hintergrund auf der Hilfsverbindung; ihre Zeilen werden angehängt, das Ergebnis behält höchstens `page_size` Zeilen. Das Folgen endet, wenn der Tab geschlossen oder das Ergebnis abgebrochen wird. Vorlage: `tail.lua`.
 
@@ -1527,6 +1854,9 @@ Hinweis zu table-origin: Sortieren und Filtern auf dem Server bauen die Abfrage 
 |---|---|
 | `ctx:confirm(msg)` | Ja/Nein-Dialog; gibt `true` oder `false` zurück. In einem `write`-Befehl deckt ein „Ja“ alle folgenden `ctx:exec` dieses Aufrufs ab |
 | `ctx:pick(items, opts)` | filterbare Auswahlliste (tippen filtert, `Enter` wählt, `Esc` bricht ab). `items` sind Strings oder Tabellen mit einem Feld `label` (weitere Felder sind erlaubt und kommen unverändert zurück). Gibt `item, index` zurück (das gewählte Element selbst und seine Position ab 1) bzw. ein einzelnes `nil` bei Abbruch; `opts.title` |
+| `ctx:form(fields, opts)` | Einstellungsformular: `fields` werden genau wie die [Optionen eines Exporters](#exportformate-dbccexporter) deklariert (also funktioniert `ctx:form(e.options, …)` mit `e` aus `dbcc.exporters()`); `opts.title` (Standard: der Befehlsname), `opts.values` = Anfangswerte (Text oder Lua-Werte; andere beginnen mit ihrem Standardwert). Gibt eine Tabelle Name → Wert (`string`, Zahl, Boolean) zurück, oder `nil` bei Abbruch. `F2` oder **OK** übernimmt, `Esc` bricht ab; steht in einem `int`-Feld keine ganze Zahl, bleibt das Formular offen |
+| `ctx:save_file(opts)` | der Dateidialog (siehe [Export eines Ergebnisses](#export-eines-ergebnisses)): `opts.title`, `opts.name` (vorgeschlagener Dateiname), `opts.dir` (Startverzeichnis, `~/` expandiert; Standard: das Verzeichnis der zuletzt gewählten Datei, sonst das Arbeitsverzeichnis), `opts.extensions` (Liste). Gibt `path, exists` zurück – den absoluten Pfad und ob die Datei schon existiert (der Dialog fragt nicht nach dem Überschreiben) – oder `nil` bei Abbruch. Den zurückgegebenen Pfad darf `ctx:export_with` im selben Aufruf beschreiben |
+| `ctx:open_file(opts)` | der Dateidialog im Öffnen-Modus: `opts.title`, `opts.dir`, `opts.extensions`. Liefert den Pfad einer vorhandenen Datei oder `nil` bei Abbruch; den Pfad darf der Aufruf danach lesen (und schreiben) |
 | `ctx:editor_set(text)` | ersetzt den Text des aktuellen Scratch-Tabs; ist der aktuelle Tab kein Scratch, den des ersten Scratches, sonst eines neuen |
 | `ctx:editor_open(title, text, opts)` | mit `opts.object` (aus `ctx:resolve`): öffnet bzw. fokussiert einen an das Objekt gebundenen Objekt-Tab mit Titel `title` (wie `edit`); ohne Objekt: ein neuer Scratch mit dem Text (`title` wird dann nicht verwendet) |
 | `ctx:about()` | zeigt die About-Seite |
@@ -1562,12 +1892,17 @@ Jedes Primitiv funktioniert auch headless (`dbcc -p … -c "<befehl>"`):
 | `ctx:confirm`, Rückfrage von `ctx:exec` | Ja/Nein-Dialog | ohne `--yes`: Fehler `confirmation required; run with --yes:` + Fragetext; mit `--yes`: `true` |
 | `ctx:pick` | Auswahlliste | Fehler `ctx:pick: choosing from a list is not available without UI` |
 | `ctx:editor_set` | Scratch-Tab | Fehler `ctx:editor_set: the editor is not available without UI` |
+| `ctx:form` | Einstellungsformular | Fehler `ctx:form: a form is not available without UI` |
+| `ctx:save_file` | Dateidialog | Fehler `ctx:save_file: the file dialog is not available without UI` |
+| `ctx:open_file` | Dateidialog | Fehler `ctx:open_file: the file dialog is not available without UI` |
+| `ctx:file_grid` | Ergebnistab, seitenweise | jede Zeile auf stdout im `--format`-Format |
 | `ctx:editor_open` | Editor-Tab | Text auf stdout |
 | `ctx:about` | About-Seite | About-Text auf stdout |
-| `ctx:export` | aktueller Ergebnistab | das zuletzt ausgegebene Ergebnis – das ist dann schon auf stdout gestreamt; headless besser `--format csv`/`json` verwenden |
+| `ctx:export`, `ctx:export_with` | aktueller Ergebnistab | das zuletzt ausgegebene Ergebnis – das ist dann schon auf stdout gestreamt; headless besser `--format csv`/`json` verwenden (ein einzelnes `dbcc -c "export x.csv"` hat kein aktives Ergebnis: `no active result to export`) |
+| `ctx.ui` | `true` | `false` |
 | `ctx:reload_commands` | lädt neu | Fehler (headless lädt jeder Aufruf neu) |
 
-Die Fehler von `ctx:pick` und `ctx:editor_set` lassen sich mit `pcall` abfangen, um headless eine Alternative zu bieten – so macht es `history.lua`, so macht es [Beispiel g](#g-interaktion-auswahlliste-und-editor).
+Die Fehler von `ctx:pick`, `ctx:form`, `ctx:save_file` und `ctx:editor_set` lassen sich mit `pcall` abfangen (oder vorher `ctx.ui` prüfen), um headless eine Alternative zu bieten – so macht es `history.lua`, so macht es [Beispiel g](#g-interaktion-auswahlliste-und-editor).
 
 ### Metadaten-Tabelle von `ctx:meta`
 
@@ -1596,6 +1931,12 @@ Die ersten Felder entsprechen `ctx:resolve`. Echte Werte für `logs` auf MariaDB
 | `dbcc.fmt.table(headers, rows)` | ausgerichtete Texttabelle als String; `nil` = `NULL`; rein numerische Spalten rechtsbündig |
 | `dbcc.fmt.size(bytes)` | `"512 B"`, `"1.5 KiB"`, `"16.0 MiB"` … (`nil` → `""`) |
 | `dbcc.fmt.count(n)` | `"1,234,567"` |
+| `dbcc.exporters()` | Liste der registrierten Exportformate, nach Namen sortiert: `{name=, title=, help=, extensions={…}, options={ {name=, label=, help=, type=, default=, choices={ {value=, label=}, … }}, … }, source=, default=}` (`choices` nur bei `choice`-Optionen) |
+| `dbcc.importers()` | die registrierten Importformate, wie `dbcc.exporters()` |
+| `dbcc.fmt.csv(values, n, opts)` | ein CSV-Datensatz ohne Zeilenende: `values` ist eine Liste mit `nil` für NULL, `n` die Zahl der Felder (Lücken zählen mit). `opts`: `delimiter` (ein Zeichen, Standard `,`), `quote` (ein Zeichen, Standard `"`, muss sich unterscheiden), `quoting` (`minimal` Standard, `all`, `nonnumeric`, `none` – wie beim [Format `csv`](#export); `nonnumeric` lässt Lua-Zahlen und die in der Liste `opts.numeric` mit `true` markierten Felder ohne Anführungszeichen, außer sie enthalten das Trennzeichen, das Anführungszeichen, CR oder LF; `none` meldet `field 2 contains the delimiter, the quote character or a line break …`), `null` (Text für NULL, ohne Anführungszeichen, Standard `""`). Beispiel: `dbcc.fmt.csv({ "a", "b,c", nil, 3 }, 4)` → `a,"b,c",,3` |
+| `dbcc.fmt.json(v)` | JSON-Text eines Strings (maskiert wie Gos encoding/json, auch `<`, `>`, `&` als `\u003c` …), einer Zahl, eines Booleans oder von `nil` (`null`); Tabellen sind ein Fehler |
+| `dbcc.fmt.number(text, decimal)` | die Zahl in `text` oder `nil`, gelesen wie das Grid eine numerische Spalte liest: `decimal` `"."` (Standard, Go-Zahlensyntax) oder `","` (`dbcc.fmt.number("1.234,50", ",")` → 1234.5; `"1.23,4"` → `nil`) |
+| `dbcc.fmt.cell(v)` | der Text eines Werts: `nil` → `""`, ganze Zahlen ohne `.0` (`3`, `1e15` → `1000000000000000`), Booleans `true`/`false`, Strings unverändert |
 
 ### Fehler und Exit-Codes
 
@@ -1610,7 +1951,8 @@ Die ersten Felder entsprechen `ctx:resolve`. Echte Werte für `logs` auf MariaDB
 ### Sandbox
 
 - Lua 5.1 (gopher-lua). Es gibt **keine** Ganzzahldivision `//`, keine Bitoperatoren und kein `goto` – `math.floor(a / b)` verwenden.
-- Geladen sind nur die Bibliotheken `base`, `table`, `string` und `math`. **Kein `os`, kein `io`, kein `debug`, kein `package`, kein `coroutine`**; `dofile`, `loadfile`, `require`, `module` und `newproxy` sind entfernt. `load`/`loadstring` bleiben (nur Code aus Strings). Es gibt also weder Dateizugriff (außer über `ctx:export`) noch Uhrzeit oder Umgebungsvariablen – Datum und Zeit liefert die Datenbank (`SELECT NOW()`).
+- Geladen sind nur die Bibliotheken `base`, `table`, `string` und `math`. **Kein `os`, kein `io`, kein `debug`, kein `package`, kein `coroutine`**; `dofile`, `loadfile`, `require`, `module` und `newproxy` sind entfernt. `load`/`loadstring` bleiben (nur Code aus Strings). Skripte können keine Dateien lesen und keine Verzeichnisse auflisten, und es gibt weder Uhrzeit noch Umgebungsvariablen – Datum und Zeit liefert die Datenbank (`SELECT NOW()`).
+- **Dateien:** Skripte lesen und schreiben nur Pfade, **die der Benutzer im laufenden Befehl gewählt hat**: `file:<pfad>`, an ein Argument oder Flag vom Typ `object` übergeben, den Wert eines Arguments oder Flags vom Typ `file` (wie eingegeben, nach `~`-Expansion; `out.csv`, `./out.csv` und die absolute Form sind derselbe Pfad) oder einen Pfad, den `ctx:save_file` oder `ctx:open_file` im selben Aufruf geliefert hat. Gelesen wird über `ctx:file_grid`, `ctx:file_count`, `ctx:file_info` und ein Importformat, geschrieben über `ctx:export_with` und `ctx:export`. Jeder andere Pfad – eine Konstante im Skript, ein `string`-Argument, ein Pfad aus einem früheren Aufruf – wird abgelehnt, bevor das Dateisystem berührt wird, mit derselben Meldung, ob die Datei existiert oder nicht: `ctx:file_count: /home/anna/x.csv was not chosen by the user: pass file:<path> to an "object" argument, a path to a "file" argument of the command, or a path from ctx:open_file` (beim Schreiben: `ctx:export_with: … was not chosen by the user: pass a path from a "file" argument of the command or from ctx:save_file`). Verzeichnisse können Skripte nicht auflisten. Skripte in `~/.config/dbcc/commands` laufen trotzdem mit Ihrem Vertrauen – sie führen SQL in Ihren Sitzungen aus: **Installieren Sie nur Skripte, die Sie gelesen haben.**
 - Jedes Skript hat eine **eigene globale Umgebung**: Globale Variablen eines Skripts sind in anderen nicht sichtbar, Lesezugriffe fallen auf die gemeinsamen Standardfunktionen zurück. Gemeinsamen Code gibt es deshalb nicht (kein `require`); Hilfsfunktionen gehören in die Datei, die sie nutzt.
 - Die Tabellen `dbcc` und `dbcc.fmt` sind schreibgeschützt (`dbcc is read-only`).
 - Zustand auf oberster Ebene eines Skripts lebt so lange wie die Lua-Laufzeit: in der UI bis `reload` oder Programmende, headless nur für den einen Befehl.
@@ -2032,7 +2374,7 @@ Ohne `pcall` scheitert `ctx:editor_set` headless mit `tpl: ctx:editor_set: the e
 
 ---
 
-## 18. Datenbankspezifisches
+## 19. Datenbankspezifisches
 
 ### MySQL und MariaDB
 
@@ -2053,7 +2395,7 @@ Ohne `pcall` scheitert `ctx:editor_set` headless mit `tpl: ctx:editor_set: the e
 - `du` und `grep` lesen nur den Katalog der aktuellen Datenbank.
 - Abbrechen über einen Cancel-Request des Treibers; die Verbindung bleibt nutzbar.
 - NOTICE- und WARNING-Meldungen erscheinen als Warnungen im Messages-Log.
-- DDL ist transaktional; manuelle Transaktionen mit automatischem `BEGIN` (siehe [Abschnitt 13](#13-transaktionen-und-sicherheit)).
+- DDL ist transaktional; manuelle Transaktionen mit automatischem `BEGIN` (siehe [Abschnitt 14](#14-transaktionen-und-sicherheit)).
 - Statements liefern höchstens eine Ergebnismenge (Prozeduren mit OUT-Parametern eine Zeile).
 - Baum: Materialized views, Sequences (ohne die internen Sequenzen von Identity-Spalten), Funktionen und Prozeduren (Überladungen zusammengefasst, Erweiterungsmitglieder ausgelassen), Trigger.
 - Verbindung mit Anwendungsname `dbcc`, Standard-Timeout 10 s, ohne clientseitigen Statement-Cache (DDL macht keine Pläne ungültig).
@@ -2073,7 +2415,7 @@ Ohne `pcall` scheitert `ctx:editor_set` headless mit `tpl: ctx:editor_set: the e
 
 ---
 
-## 19. Dateien und Verzeichnisse
+## 20. Dateien und Verzeichnisse
 
 Es gelten `XDG_CONFIG_HOME` und `XDG_STATE_HOME`, falls gesetzt.
 
@@ -2081,16 +2423,16 @@ Es gelten `XDG_CONFIG_HOME` und `XDG_STATE_HOME`, falls gesetzt.
 |---|---|
 | `~/.config/dbcc/config.toml` | Einstellungen, Profile, Tastenbelegung (0600 empfohlen; Warnung bei weiteren Rechten) |
 | `~/.config/dbcc/credentials.toml` | Passwortspeicher (0600) |
-| `~/.config/dbcc/commands/*.lua` | eigene Befehle (geladen beim Start und mit `reload`, siehe [Abschnitt 17](#wo-die-skripte-liegen)) |
+| `~/.config/dbcc/commands/*.lua` | eigene Befehle, Export- und Importformate (geladen beim Start und mit `reload`, siehe [Abschnitt 18](#wo-die-skripte-liegen)) |
 | `~/.local/state/dbcc/history.jsonl` | Statement-Historie (JSON Lines: `time`, `profile`, `path`, `duration_ms`, `outcome`, `stmt`) |
 | `~/.local/state/dbcc/scratches/<verbindung>/*.sql` | Scratch-Dateien (`_none` = ohne Verbindung) |
 | `~/.local/state/dbcc/scratches/open.json` | zuletzt offene Scratch-Tabs mit Cursorposition |
-| `~/.local/state/dbcc/hang-<zeit>-<grund>.txt` | Diagnose-Dumps (siehe [Fehlerbehebung](#20-fehlerbehebung)) |
+| `~/.local/state/dbcc/hang-<zeit>-<grund>.txt` | Diagnose-Dumps (siehe [Fehlerbehebung](#21-fehlerbehebung)) |
 | `~/.my.cnf`, `~/.pgpass` (`$PGPASSFILE`) | gelesen bei `password = "mycnf"` bzw. `"pgpass"` |
 
 ---
 
-## 20. Fehlerbehebung
+## 21. Fehlerbehebung
 
 ### Tasten kommen nicht an
 
@@ -2131,6 +2473,11 @@ pkill -QUIT dbcc
 | `passwords must not be stored in the profile file …` | Klartextpasswort in `config.toml`; Passwortquelle verwenden. |
 | `settings.page_size = …: must be at least 10` | `page_size` zu klein. |
 | `user command script skipped: …` | Eigenes Lua-Skript fehlerhaft; ein gleichnamiger eingebauter Befehl bleibt aktiv. |
+| `no import type for "x.dat" (extensions: …; types: …)` | Kein Importformat hat diese Endung: `open -t csv x.dat`. |
+| `import kunden.csv (csv): record 12 has 5 fields, more than the 4 columns` | Ein Datensatz ist länger als die Kopfzeile; das Trennzeichen prüfen (`open -o delimiter=…`). |
+| `import kunden.csv (csv): unterminated quoted field: …` | Ein Anführungszeichen wird geöffnet und nie geschlossen; das Anführungszeichen prüfen. |
+| `… was not chosen by the user: …` | Ein Skript wollte einen Pfad lesen oder schreiben, den Sie ihm nicht gegeben haben (siehe [Sandbox](#sandbox)). |
+| `import type "csv" is no longer registered; open the file again` | Nach `reload` fehlt das Format eines offenen Datei-Tabs. |
 | `unknown host key for … ; connect once with ssh …` | Headless ohne Terminal: Der Host-Schlüssel des SSH-Servers ist unbekannt. Einmal mit `ssh` oder in der dbcc-Oberfläche verbinden und den Schlüssel bestätigen. |
 | `HOST KEY CHANGED for …` | Der SSH-Server zeigt einen anderen Schlüssel als in `known_hosts`. Verbindung abgelehnt – siehe [SSH-Tunnel](#ssh-tunnel). |
 | `ssh …: authentication failed (agent, key files and password were tried)` | Kein Anmeldeweg hat funktioniert: Schlüsseldatei, `ssh-agent`, Benutzer und Passwort prüfen. |
@@ -2138,7 +2485,7 @@ pkill -QUIT dbcc
 
 ---
 
-## 21. Über dbcc
+## 22. Über dbcc
 
 **dbcc — Database Command & Control**
 Ein Produkt der **Datamedrix GmbH**.

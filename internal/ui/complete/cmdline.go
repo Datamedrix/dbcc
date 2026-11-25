@@ -81,7 +81,7 @@ func commandLine(ctx context.Context, reg commandSource, comp *Completer, line s
 			// -t=value
 			if f, found := cmd.Flag(name); found && f.TakesValue() {
 				dashes := word[:len(word)-len(strings.TrimLeft(word, "-"))]
-				for _, c := range flagValues(ctx, comp, f, val) {
+				for _, c := range flagValues(ctx, reg, comp, f, val) {
 					cands = append(cands, dashes+name+"="+c)
 				}
 			}
@@ -90,7 +90,7 @@ func commandLine(ctx context.Context, reg commandSource, comp *Completer, line s
 		cands = flagNames(cmd.Flags, word)
 	case e.FlagValue != "":
 		if f, found := cmd.Flag(e.FlagValue); found {
-			cands = flagValues(ctx, comp, f, word)
+			cands = flagValues(ctx, reg, comp, f, word)
 		}
 	default:
 		cands = typedArgs(ctx, comp, e.Type, word)
@@ -113,6 +113,14 @@ func typedArgs(ctx context.Context, comp *Completer, t script.ArgType, word stri
 	}
 	switch t {
 	case script.ArgObject:
+		if strings.HasPrefix(word, script.FilePrefix) {
+			// file:<path> (A29): file names after the prefix.
+			var out []string
+			for _, f := range comp.fileArgs(strings.TrimPrefix(word, script.FilePrefix)) {
+				out = append(out, script.FilePrefix+f)
+			}
+			return out
+		}
 		return comp.objectArgs(ctx, word)
 	case script.ArgPath:
 		return comp.pathArgs(ctx, word)
@@ -121,14 +129,39 @@ func typedArgs(ctx context.Context, comp *Completer, t script.ArgType, word stri
 			return filterPrefix(comp.Profiles(), word)
 		}
 	case script.ArgFile:
+		if strings.HasPrefix(word, script.FilePrefix) {
+			var out []string
+			for _, f := range comp.fileArgs(strings.TrimPrefix(word, script.FilePrefix)) {
+				out = append(out, script.FilePrefix+f)
+			}
+			return out
+		}
 		return comp.fileArgs(word)
 	}
 	return nil
 }
 
+// exporterSource and importerSource are implemented by
+// *command.Registry: the names of the registered export and import
+// formats, for flag_values = "exporters" / "importers".
+type exporterSource interface{ ExporterNames() []string }
+type importerSource interface{ ImporterNames() []string }
+
 // flagValues completes the value of flag f: its declared values when it
-// has some, otherwise by its value type.
-func flagValues(ctx context.Context, comp *Completer, f script.FlagSpec, word string) []string {
+// has some, the names of its dynamic source, otherwise by its value type.
+func flagValues(ctx context.Context, reg commandSource, comp *Completer, f script.FlagSpec, word string) []string {
+	switch f.ValuesFrom {
+	case "exporters":
+		if es, ok := reg.(exporterSource); ok {
+			return filterPrefix(es.ExporterNames(), word)
+		}
+		return nil
+	case "importers":
+		if is, ok := reg.(importerSource); ok {
+			return filterPrefix(is.ImporterNames(), word)
+		}
+		return nil
+	}
 	if len(f.Values) > 0 {
 		return filterPrefix(f.Values, word)
 	}

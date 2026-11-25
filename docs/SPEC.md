@@ -1,6 +1,10 @@
 # dbcc — Database Command & Control
 
-Specification v1.4 · 2026-11-21 · A terminal database client. Product name: **dbcc**, short for *Database Command & Control*. `dbcc` is also the name of the binary, the Go module, the configuration directory and the Lua namespace.
+Specification v1.6 · 2026-11-25 · A terminal database client. Product name: **dbcc**, short for *Database Command & Control*. `dbcc` is also the name of the binary, the Go module, the configuration directory and the Lua namespace.
+
+Changes in v1.6: files (CSV …) are data sources read by Lua import plugins (`dbcc.importer`); `open` and the `file:<path>` forms of `ll`, `head`, `tail`, `wc`, `cat`; `-p` is optional for a single `-c` command (A29; sections 3.2, 8, 10, 13, 15, 17).
+
+Changes in v1.5: result export formats are Lua plugins registered with `dbcc.exporter`; `export` chooses type, settings and file in dialogs (grid key `e`) or takes `-t`/`-o` (A28; sections 8, 10.7, 13, 14, 17).
 
 Changes in v1.4: the tool is named dbcc (sections 3.7, 7.1, 8, 17); every occurrence of the former working title is replaced.
 
@@ -58,12 +62,13 @@ A single-binary, keyboard-driven, full-screen terminal database client written i
 |---|---|
 | `cd` | Changes the current path. On PostgreSQL a database change reconnects transparently. |
 | `ll <table\|view>` | `SELECT * FROM <object>`, opened in the result grid. |
+| `ll file:<path>`, `open [file]` | A file (CSV …) read by an import plugin, opened in the result grid as a free result (A29). `head`, `tail`, `wc` and `cat` take `file:<path>` too. |
 | `cp <src> <new>` | Data-only copy: `CREATE TABLE <new> AS SELECT * FROM <src>`. |
 | `cp -a <src> <new>` | Copy with structure (columns, defaults, primary key, indexes, checks) plus data. |
 | `cat <table>` | Structured description in the style of MySQL `EXPLAIN <table>` / `DESCRIBE`, extended with **all** definitions and constraints. Not a DDL statement. |
 | `cat <view\|procedure\|function>` | Source code with syntax highlighting. |
 | `explain` | Not a special command. It stays plain SQL (query plan). |
-| Additional commands in v1 | `ls`, `pwd`, `history`, `head`, `tail`, `wc`, `du`, `mv`, `grep`, `ps`, `kill`, `export`, `edit`, `help`. |
+| Additional commands in v1 | `ls`, `pwd`, `history`, `head`, `tail`, `wc`, `du`, `mv`, `grep`, `ps`, `kill`, `export`, `open`, `edit`, `help`. |
 | Implementation of commands | **Every** command is a Lua script, including `cd`, `ll`, `cp` and `cat`. No command is written in Go. The default scripts are embedded in the binary. |
 | Extensibility | User scripts in the config directory add commands or replace default ones. |
 
@@ -425,9 +430,12 @@ Note on the product name: T-SQL has its own `DBCC` statements (for example `DBCC
 | `grep <pattern>` | Search object names, column names and sources of views and routines | no | `ctx:query`, `ctx:rows` |
 | `ps` | Running sessions and statements | no | `ctx:query`, `ctx:rows` |
 | `kill <id>` | Terminate a session | yes | `ctx:exec` |
-| `export <file>` | Write the active result to a file, see 10.7 | no | `ctx:export` |
+| `export [-f] [-t type] [-o name=value]... [file]` | Write the active result to a file in an export format (a plugin, A28), see 10.7; without a file the type, its settings and the file are chosen in dialogs | no | `dbcc.exporters`, `ctx:pick`, `ctx:form`, `ctx:save_file`, `ctx:export_with` |
+| `open [-t type] [-o name=value]... [file]` | Open a file in the result grid through an import format (A29); without a file the file, the type and its settings are chosen in dialogs | no | `dbcc.importers`, `ctx:open_file`, `ctx:pick`, `ctx:form`, `ctx:file_grid` |
 | `history` | Show the statement history; Enter loads an entry into the editor | no | `ctx:history`, `ctx:pick`, `ctx:editor_set` |
 | `help [command]` | Command help; `help about` shows the About page | no | `dbcc.commands`, `ctx:about` |
+
+`ll`, `head`, `tail` (without `-f`/`-k`), `wc` and `cat` also take a file written `file:<path>` where they take a table (A29): `ll file:kunden.csv`, `head file:~/daten/x.csv 20`, `wc file:x.csv`, `cat file:x.csv` (path, size, date, import settings, columns). Other commands that resolve an object refuse a file with a message naming its kind.
 
 Every command in this table is a Lua script (`internal/script/commands/<name>.lua`, embedded with `go:embed`). There is no second kind of command. The scripts use only the public API of section 13, so they double as reference examples, and a user script of the same name replaces any of them.
 
@@ -542,6 +550,7 @@ The splitter returns statements with their starting line number. The same splitt
 - The same re-run and skip happens when moving forward after the cursor was closed by the open-cursor rule (section 6.3).
 - The status line shows the rows of the page, the page number and `+` while a next page may exist, e.g. `rows 3,001–6,000 · page 2 +`, plus `partial` after the cursor was closed. A complete result of one page reads `42 rows`.
 - `max_rows` no longer applies to the grid; headless output streams every row as before.
+- **File results** (A29) page the same way: rows are read from the file in chunks; a previous page, a rerun (F5) and an export re-read the file from the start through its import plugin and skip the rows before the page. The open-cursor rule does not apply to them (they hold no database session).
 - The open-cursor rule of section 6.3 applies.
 
 ### 10.3 Result origin
@@ -549,7 +558,7 @@ The splitter returns statements with their starting line number. The same splitt
 Every result carries its origin:
 
 - **table-origin**: produced by `ll`, `head`, `tail`, or opening a table or view from the tree. The grid knows the object and its metadata.
-- **free**: anything else.
+- **free**: anything else, including file results (A29): local sort and filter, no forms; they belong to no connection.
 
 Table-origin results enable server-side sort and filter, the free `WHERE` filter, and row editing.
 
@@ -584,7 +593,7 @@ Execution:
 
 ### 10.7 Export
 
-`export <file>` writes the whole active result, not just the page in memory. Format follows the extension: `.csv`, `.json`. On the first page with the cursor still open, the export writes the loaded rows and continues the cursor to the end; otherwise it re-runs the statement from the start (with its arguments; read queries only) and streams every row to the file. It shows progress and can be cancelled. An active local filter is applied while streaming. An active local sort forces loading all rows into memory before writing (memory grows with the result).
+`export` writes the whole active result, not just the page in memory. Formats are Lua plugins (`dbcc.exporter`, A28); built in are `csv` and `json`. With a file argument the format comes from `-t` or else from the file extension, its options from `-o name=value`; without a file the owner chooses the format from a list, its settings in a form and the file in a file dialog, and is asked before an existing file is overwritten. On the first page with the cursor still open, the export writes the loaded rows and continues the cursor to the end; otherwise it re-runs the statement from the start (with its arguments; read queries only) and streams every row to the file. It shows progress and can be cancelled. An active local filter is applied while streaming. An active local sort forces loading all rows into memory before writing (memory grows with the result).
 
 ## 11. Row form
 
@@ -632,9 +641,9 @@ History: statements are appended to a history file in the state directory with t
 Principle: Go provides primitives, Lua provides every command. The tool has no command that is not a Lua script.
 
 - Runtime: gopher-lua. One Lua state, used from one goroutine.
-- Sandbox: load only the base, table, string and math libraries. No `os`, no `io`. File access happens only through primitives such as `ctx:export`.
+- Sandbox: load only the base, table, string and math libraries. No `os`, no `io`. File access happens only through primitives: scripts read and write only paths the owner chose in the running invocation (a `file` argument or flag, `file:<path>` given to an `object` argument, a path returned by `ctx:save_file` or `ctx:open_file`). Writing: `ctx:export`, `ctx:export_with` (A28); reading: `ctx:file_grid`, `ctx:file_count`, `ctx:file_info` with an import plugin (A29). Scripts cannot list directories.
 - Default commands: `internal/script/commands/*.lua`, embedded in the binary, loaded first.
-- User scripts: `~/.config/dbcc/commands/*.lua`, loaded afterwards. A user command with the name of a default command replaces it. This holds for every command.
+- User scripts: `~/.config/dbcc/commands/*.lua`, loaded afterwards. A user command with the name of a default command replaces it. This holds for every command, and for export formats (`dbcc.exporter`, A28), which any script may register and which load, override and `reload` exactly like commands.
 - A user script that fails to load is reported in the message log and skipped. If it was meant to replace a default command, the default stays active, so a broken `cd.lua` cannot lock the owner out.
 - `dbcc --no-user-commands` starts with the defaults only. `dbcc --export-commands <dir>` writes the embedded scripts to a directory as a starting point for changes.
 
@@ -659,10 +668,11 @@ dbcc.command{
 | `ctx.dialect` | `"mysql"`, `"mariadb"`, `"postgres"`, `"mssql"` |
 | `ctx.path` | Current connection, database, schema |
 | `ctx.profile` | Name and flags of the current profile (read-only, autocommit) |
+| `ctx.ui` | `true` when dialogs (`ctx:pick`, `ctx:form`, `ctx:save_file`, `ctx:open_file`) can be shown; `false` headless |
 | **Navigation and metadata** | |
 | `ctx:chdir(path)` | Change the current path; issues `USE` or reconnects as the dialect requires |
 | `ctx:objects(path, kinds)` | List databases, schemas or objects at a path |
-| `ctx:resolve(name)` | Resolve a name against the current path; returns kind, parts and quoted SQL name |
+| `ctx:resolve(name)` | Resolve a name against the current path; returns kind, parts and quoted SQL name. `file:<path>` returns a file object `{kind="file", name=, path=}` without a connection (A29) |
 | `ctx:meta(name)` | Metadata model of a table or view as a Lua table (section 6.2) |
 | `ctx:source(name, kind)` | Source text of a view, procedure, function or trigger |
 | **SQL helpers** | |
@@ -679,21 +689,36 @@ dbcc.command{
 | `ctx:text(str, lexer)` | Show highlighted text in a tab |
 | `dbcc.fmt.table(headers, rows)` | Aligned text table as a string |
 | `ctx:message(msg)` | Write to the message log |
-| `ctx:export(file, opts)` | Write the active result to a file (section 10.7) |
+| `ctx:export(file, opts)` | Write the active result to a `.csv` or `.json` file (section 10.7; `file` as for `ctx:export_with`; kept for scripts, `export` uses `ctx:export_with`) |
+| `ctx:export_with(name, file, opts)` | Run export format `name` on the active result (A28); `file` must come from a `file` argument or flag of the command or from `ctx:save_file` in the same invocation; `opts.options` are checked against its declaration and completed with defaults, `opts.force` overwrites, `opts.progress` sets the progress interval; returns the rows written |
+| `ctx:result_info()` | Title, columns, loaded rows and capped flag of the active result, or nil |
+| `dbcc.fmt.csv(values, n, opts)` | One CSV record (A28): delimiter, quote, quoting `minimal`/`all`/`nonnumeric`/`none`, NULL text |
+| `dbcc.fmt.json(v)` | JSON text of a string, number, boolean or nil |
+| `dbcc.fmt.cell(v)` | Text of a row value (`nil` → empty) |
 | **Interaction** | |
 | `ctx:confirm(msg)` | Ask yes or no |
 | `ctx:pick(items, opts)` | Let the owner choose from a list; returns the chosen item |
+| `ctx:form(fields, opts)` | Settings dialog for fields declared like exporter options (A28); returns name → typed value, or nil when cancelled |
+| `ctx:save_file(opts)` | File dialog (A28): directory tree, file-name input, file list; returns the path and whether the file exists, or nil when cancelled |
+| `ctx:open_file(opts)` | The file dialog in open mode (A29): returns an existing file's path, or nil when cancelled |
+| `ctx:file_grid(file, opts)` | Open a file in a result tab through an import plugin (A29): `opts.importer`, `opts.options`, `opts.limit`, `opts.tail`, `opts.title` |
+| `ctx:file_count(file, opts)` | Number of records of a file (A29) |
+| `ctx:file_info(file, opts)` | Path, size, date, import format, options and columns of a file (A29) |
 | `ctx:editor_set(text)` | Put text into the current scratch tab |
 | `ctx:editor_open(title, text, opts)` | Open or focus an editor tab; `opts.object` binds it to a database object |
 | `ctx:about()` | Show the About page (section 7.1) |
 | **Registry and history** | |
 | `dbcc.command{...}` | Register a command |
 | `dbcc.commands()` | List registered commands with usage and help |
+| `dbcc.exporter{...}` | Register an export format (A28) |
+| `dbcc.exporters()` | List registered export formats with title, extensions and options |
+| `dbcc.importer{...}` | Register an import format (A29) |
+| `dbcc.importers()` | List registered import formats |
 | `ctx:history(n)` | The last n history entries |
 
 Parameters of `ctx:query`, `ctx:exec` and `ctx:grid` are written as `?` in every dialect: when arguments are passed, the runtime rewrites each `?` outside strings, comments and quoted identifiers into the dialect's placeholder (`$1…` on PostgreSQL, `@p1…` on MSSQL). Without arguments the statement is sent unchanged (`?` is also a jsonb operator on PostgreSQL). Scripts may also write the native placeholders directly; mixing both in one statement is not supported.
 
-All primitives work in headless mode: `ctx:grid`, `ctx:rows`, `ctx:text`, `ctx:about` and `ctx:editor_open` print to stdout (so `dbcc -c "edit calc_total"` prints the replace script); `ctx:confirm` fails unless `--yes` is given; `ctx:pick` and `ctx:editor_set` fail with a clear message.
+All primitives work in headless mode: `ctx:grid`, `ctx:rows`, `ctx:text`, `ctx:about` and `ctx:editor_open` print to stdout (so `dbcc -c "edit calc_total"` prints the replace script); `ctx:confirm` fails unless `--yes` is given; `ctx:pick`, `ctx:form`, `ctx:save_file` and `ctx:editor_set` fail with a clear message.
 
 The default commands are the contract tests of this API. A change to a primitive must keep all of them passing.
 
@@ -756,6 +781,7 @@ Defaults; every binding can be changed in the configuration. Esc+digit and Alt+d
 | `n` / F6 | Next page (section 10.2) |
 | `p` | Previous page (re-runs a read query and skips the rows before it) |
 | `c` / `C` | Copy cell / row |
+| `e` | Export the result: type, settings and file in dialogs (`export`, A28) |
 | `[` / `]` | Previous / next result tab |
 
 **Form**
@@ -817,6 +843,7 @@ Command line:
 dbcc [profile]                          start the UI, optionally connect
 dbcc -p <profile> -f <file.sql>         run a script without UI
 dbcc -p <profile> -c "<command|SQL>"    run one command or statement without UI
+dbcc -c "<command>"                     without a profile: start at "/" (file commands, A29; SQL fails "not connected")
 dbcc -p <profile> < file.sql            stdin is not a terminal: run without UI
       --format table|csv|tsv|json         output format for results (default: table)
       --yes                               answer confirmations with yes
@@ -884,3 +911,5 @@ Testing:
 | A25 | Scratches work like DataGrip's scratch files: one file per scratch under `~/.local/state/dbcc/scratches/<connection>/`, named after its creation time (`scratch_YYYY-MM-DD_HH-MM-SS.sql`), saved automatically about 1 s after the last change; closing saves first and is refused when saving fails; Alt+O lists and re-opens scratches, Alt+E/Alt+R rename (names unique per connection, case-insensitive), Alt+D deletes. Supersedes the scratch-tab persistence of 9.1. | confirmed (2026-11-21) |
 | A26 | `tail` shows the last n rows by key (primary key, all columns, or `-k column`) in ascending order: `SELECT * FROM (<last n by key descending>) AS dbcc_tail ORDER BY <key>`. `tail -f` follows **inserts only, by key order**: every interval (default 2 s, `-i`, at least 0.5 s) it reads the rows with a key greater than the last one seen, ordered ascending, and appends them at the end of the result; updated or deleted rows, and rows committed later with a smaller key, are not shown. A single-column key is required (`-k` for a composite primary key). Polling runs in the background on the **auxiliary connection** of the object's session, never on the main session (open-cursor rule) and never on the command's goroutine, so the UI stays usable. The result keeps at most `page_size` rows (headless: 3,000); older rows are dropped from the front and the status line shows `rows 1,201–4,200 · following · 12 new rows · every 2 s`. Paging does not apply (`n`/`p`/F6 say so). Following stops when the tab is closed, on F8 with that result tab current, when a sort or filter re-queries it, when the session closes or the application quits; an error (e.g. the table was dropped) stops it and goes to the message log. With the cursor on the last row the grid moves it to the new last row. Headless (`dbcc -p prof -c "tail -f log"`) prints the last n rows, then each new row as it arrives — table format without repeating the header, csv/tsv records, json as **JSON Lines** (one object per line, no enclosing array) — until SIGINT or SIGTERM, then exits 0; an error that stops following exits 1. | confirmed (2026-11-21) |
 | A27 | Connections can run through an **SSH tunnel** (owner request 2026-11-22, supersedes the non-goal "no built-in SSH tunnel"). In F2 the owner chooses, in addition to the credentials, a `Host` of `~/.ssh/config` (or enters host, port, user, key file and jump hosts manually); when the connection works, the SSH data is taken over into the profile (`[profiles.<name>.ssh]`: `alias`, `host`, `port`, `user`, `identity_file`, `proxy_jump`, `password = prompt\|stored`) for the next time — Save tests first and saves only on success. The tunnel is built in (golang.org/x/crypto/ssh, no `ssh` process, no local listening port): each driver dials through it (MySQL `DialFunc`, pgx `DialFunc` incl. cancel requests, go-mssqldb `HostDialer`), names are resolved on the SSH server. `~/.ssh/config` is read like OpenSSH (Host patterns, Include, first value wins; HostName, Port, User, IdentityFile, IdentitiesOnly, ProxyJump, UserKnownHostsFile, StrictHostKeyChecking, algorithm lists with `+ - ^`, ServerAliveInterval, ConnectTimeout; no Match, no ProxyCommand). Login: key files (agent copy first), agent keys, password/keyboard-interactive; an encrypted key asks for its passphrase only when the server accepts it; prompt time does not count against the timeout. Host keys: known → connect; unknown → the owner confirms (fingerprint; Cancel is the default; `accept-new` adds silently, `yes` refuses; headless asks on /dev/tty, `--yes` does not answer it) and the key is appended to known_hosts; changed → always refused. An SSH password or key passphrase is stored only with `ssh.password = "stored"`, in the credential store (`ssh_password` with `ssh_secret_kind`), never in config.toml; it answers only the target's question of that kind (never a jump host, never one-time codes). Host keys are also checked against /etc/ssh/ssh_known_hosts (read only) and under HostKeyAlias. Tunnel connections emulate deadlines (driver timeouts). Reconnects are serialized. Keepalive; a lost SSH connection is rebuilt on the next dial. Not supported: sockets through SSH, SQL Server instance names without port. | confirmed (2026-11-22) |
+| A28 | Result **export formats are Lua plugins** (owner request 2026-11-25). Any command script (embedded or in `~/.config/dbcc/commands`) may call `dbcc.exporter{name=, title=, help=, extensions={…}, options={…}, write=function(ctx, src, out, opts)}` while it loads; formats are staged and committed with the script, a user format replaces an embedded one of the same name, a broken user script leaves the embedded one active, `reload` reloads them, `--export-commands` writes them out. An option is `{name=, label=, help=, type="string"\|"int"\|"bool"\|"choice", default=, choices={…}}` (choices: strings or `{value=, label=}`); the declaration drives the settings dialog and the validation of `-o name=value` (bool also as true/false/yes/no/1/0; a choice by its value or the first word of its label, so `-o delimiter=tab`). `ctx:export_with(name, file, opts)` accepts `file` only if the owner chose it in the running invocation: the value of a positional argument or flag declared with type `file` (after `~` expansion), or a path returned by `ctx:save_file` earlier in the same invocation; paths are compared normalised (home expanded, absolute against the working directory, cleaned, symbolic links not resolved); the set lives in the per-invocation state (shared by `ctx:on` contexts, empty at the start of every command). Any other path fails before the file system is touched, with the same message whether it exists or not: `ctx:export_with: <path> was not chosen by the user: pass a path from a "file" argument of the command or from ctx:save_file`. `ctx:export(file, opts)` follows the same rule (same check, before its format check). It then opens the file (refuses an existing one without `force`), calls `write` with `src` (`columns` = `{name=, type=, numeric=, binary=}`, `title`, `src:each(fn)` hands every row of the whole result once, filter and sort of the grid applied, values as the grid's text, NULL as nil) and `out` (`out:write(…)`, `out.path`), closes the file; a failed export (any error or cancel, also one the exporter caught with `pcall` around `src:each`) never destroys data: a newly created file is removed, an existing file (`force`) is replaced only after a complete export, by writing a temporary file next to the real target (symbolic links resolved, O_EXCL, unique name, the old permission bits) and renaming it over the target, so on failure only the temporary file is removed (`ctx:export` with `force` does the same). `ctx:export_with` and `ctx:export` are refused inside an exporter. Built-in formats: `csv` (delimiter comma/semicolon/tab/pipe, header row, quoting `minimal`/`all`/`nonnumeric`/`none`, quote `"` or `'`, text for NULL, LF or CRLF, UTF-8 BOM; `nonnumeric` still quotes a numeric-column value that contains the delimiter, the quote character, CR or LF – PostgreSQL arrays, ranges, money; with the defaults byte-identical to the former writer: `minimal` quotes fields that contain the delimiter, the quote character, CR or LF, start with white space, or are `\.`) and `json` (array of objects, values as strings, NULL as null; `pretty = false` writes it on one line). `export [-f] [-t type] [-o name=value]... [file]`: with a file no dialog opens (type from `-t` or the extension; works headless); without a file (grid key `e`) the owner picks the type (skipped with `-t` or a single type), edits its settings in a form (pre-filled from `-o`), chooses the file in a file dialog (three framed areas: directory tree "Folders" left, file-name input "File name" top right that also takes a path, file list "Files" below; the focused area is framed in the theme's focus colour, the others in the normal border colour; hidden entries on Alt+H; the parent directory must exist; a name without extension gets the format's first one; starts in the directory of the last chosen file), is asked before overwriting, and any cancel ends with "export cancelled". Headless without a file: "a file is required without UI". Settings are not remembered between sessions. Import is not part of A28; the option format is shared so that a later `dbcc.importer` can use it. | confirmed (2026-11-25) |
+| A29 | **Files are data sources** read by Lua import plugins (owner request 2026-11-25). Any command script may register `dbcc.importer{name=, title=, help=, extensions={…}, options={…}, open=function(ctx, src, opts)}` while it loads; loading, staging, override, fallback, `reload` and `--export-commands` work as for exporters (A28), and the option format and its validation are shared. `open` returns `{columns = {"a", …} or {{name=, numeric=, decimal=}, …}, next = function}` (`decimal` `"."` or `","`, only with `numeric = true`; it sets `exec.ColumnInfo.Decimal`, whose zero value is the point of every SQL result; the grid's local sort and filters read numeric cells with one function, `exec.ParseNumber`, which is `strconv.ParseFloat` for a point and the strict comma grammar for a comma — text that does not parse keeps today's order; a typed filter value is read in the column's format, with a point as fallback where it is no grouping; exporters see `src.columns[i].decimal`, `ctx:file_info` and `cat file:` show it; `dbcc.fmt.number(text, decimal)` exposes the parser); Go calls `next` once per row (pull model: no coroutines in the sandbox): it returns a list (`nil` = NULL; strings, numbers — integral ones without `.0` — and booleans become the grid's text) or `nil` at the end; a shorter row is padded with NULL, a longer one fails naming its record number. `src` (valid until the file is closed): `path`, `name`, `size`, `src:encoding("utf-8"\|"windows-1252"\|"iso-8859-1")` before the first read (invalid UTF-8 becomes U+FFFD), `src:skip_bom()`, `src:read(n)` (never cuts a UTF-8 character), `src:peek(n)` (up to 64 KiB without consuming; added for delimiter detection), `src:line()` (without LF/CRLF), `src:csv{delimiter=, quote=, null=, empty_is_null=}` → a reader whose `:read(raw)` returns the fields (unquoted fields equal to `null`, or empty with `empty_is_null`, are nil unless `raw`) and their count, plus `.record` and `.line`; quoted fields may hold delimiters and line breaks (read as LF), a doubled quote is one quote, text after the closing quote is appended (lenient), empty lines are skipped, an unterminated quote fails naming its line. Built-in `importer_csv.lua`: delimiter `auto` (detected from the first lines outside quotes: the candidate `, ; tab \|` with the same non-zero count on most lines; comma when none) or chosen, header row (without: `col1…`; empty names `colN`), quote `"` or `'`, encoding, `null` text, `empty_is_null`, `numbers` (a column is numeric when every non-empty value of the first 200 records looks like a number; the text is never changed), `decimal` (`.` default, or `,`: a column of decimal-comma numbers — `1200,50`, `-3,5`, `1.234,50`, whole numbers; grouping dots strictly in threes — is numeric and declared with `decimal = ","`), `skip` lines; lines end with LF or CRLF, a final lone CR is removed, CR-only files (old Mac) are not supported; `head`/`tail` with `0` give the columns without rows; `file:` is also accepted on `file` arguments (`open file:x`, `export file:out.csv`); a read ended by an error or F8 leaves the result partial with a next page (reopen); BOM skipped; extensions `csv`, `tsv`, `txt`. **Addressing:** `file:<path>` wherever a command takes a table (`ctx:resolve` returns `{kind="file", name=, path=}`, `~` expanded, relative to the working directory, no file-system access; `ctx:on` returns the ctx unchanged); `ll`, `head`, `tail` (no `-f`/`-k`: "-f and -k are not available for files"), `wc`, `cat` have a branch for files; other commands refuse them ("… is a file, not a table or view"). Completion completes file paths after `file:`. **Reading rule:** a script reads only paths the owner chose in the running invocation: `file:<path>` given to an `object` argument or flag, a `file` argument or flag, a path from `ctx:open_file` (or `ctx:save_file`); others fail before any file-system call: `ctx:file_grid: <path> was not chosen by the user: pass file:<path> to an "object" argument, a path to a "file" argument of the command, or a path from ctx:open_file`. **Primitives:** `ctx:file_grid(file, {importer=, options=, limit=, tail=, title=})`, `ctx:file_count`, `ctx:file_info`, `ctx:open_file` (the file dialog of A28 in open mode: only an existing file is returned; a missing name keeps the dialog open with an error); without `importer`/`options` the settings remembered for that path in this session are used (stored whenever a file is opened with explicit settings; kept outside the Lua runtime, so they survive `reload`; headless has none), else the format matching the extension (`no import type for "x.dat" (extensions: …; types: …)`) with its defaults. `open [-t type] [-o name=value]... [file]`: with a file no dialog (headless prints the rows); without: file dialog → type (only when the extension does not decide it) → settings form → grid; any cancel: "open cancelled". **File results** are free results on an `exec.Cursor` over a row source (`exec.RowSource`), so chunks, pages, `Stream`, `Drain` and the status line are the SQL code; they carry their origin (`exec.FileOrigin`: path, format, options, limit, tail) and are read results: a previous page, F5 and an export reopen the file through the format of that name in the runtime that is current then and skip rows; other columns: `ErrColumnsChanged`. `tail` reads to the end keeping n rows. **Goroutines:** `next` is Lua and runs only on the worker (grid fetches, paging and F5 go through it; commands run there) or on main headless; closing a tab (UI goroutine) only interrupts the source — the file handle is closed and, outside a command, the importer's Lua context cancelled — and never calls Lua or waits for a read in flight, which then ends with the cursor closed; `Cursor.Done` is lock-free. F8 stops an importer outside a command too. `reload` closes the old runtime's file cursors first (their tabs become partial; paging reopens through the new runtime, or fails "import type "csv" is no longer registered; open the file again"). A file result belongs to no connection. **Headless:** `-c` works without `-p` (start at `/`); `-f` and stdin still need a profile. | confirmed (2026-11-25) |

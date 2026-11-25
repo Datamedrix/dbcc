@@ -241,7 +241,7 @@ func (r *Runner) RunStatement(ctx context.Context, st sqltext.Statement, last bo
 					break
 				}
 				if r.MaxBuffered > 0 && len(res.rows) >= r.MaxBuffered {
-					if !c.exhausted {
+					if !c.exhausted.Load() {
 						res.Capped = true
 					}
 					break
@@ -283,12 +283,12 @@ func (c *Cursor) fetchKeepOpen(n int) ([]Row, error) {
 	out := make([]Row, 0, n)
 	for len(out) < n {
 		if !c.rows.Next() {
-			c.exhausted = true
+			c.exhausted.Store(true)
 			return out, nil
 		}
 		row, err := scanRow(c.rows, c.cols)
 		if err != nil {
-			c.exhausted = true
+			c.exhausted.Store(true)
 			return out, err
 		}
 		out = append(out, row)
@@ -466,14 +466,14 @@ func (r *Runner) query(ctx context.Context, q string, args ...any) (*Result, err
 	}
 	res := &Result{Title: Shorten(q, 30), SQL: q, Columns: cols}
 	cur := &Cursor{rows: rows, cols: cols}
-	for !cur.exhausted {
+	for !cur.exhausted.Load() {
 		rs, err := cur.fetchKeepOpen(r.FetchSize)
 		res.rows = append(res.rows, rs...)
 		if err != nil {
 			return nil, err
 		}
 		if r.MaxBuffered > 0 && len(res.rows) >= r.MaxBuffered {
-			res.Capped = !cur.exhausted
+			res.Capped = !cur.exhausted.Load()
 			break
 		}
 	}

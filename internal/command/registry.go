@@ -121,6 +121,32 @@ func (r *Registry) Lookup(name string) (*script.Command, bool) { return r.rt.Com
 // Commands lists the registered commands sorted by name (help, completion).
 func (r *Registry) Commands() []*script.Command { return r.rt.Commands() }
 
+// Exporters lists the registered export formats sorted by name.
+func (r *Registry) Exporters() []*script.Exporter { return r.rt.Exporters() }
+
+// ExporterNames returns the names of the registered export formats
+// (completion of flags declared with flag_values = "exporters").
+func (r *Registry) ExporterNames() []string {
+	var out []string
+	for _, e := range r.rt.Exporters() {
+		out = append(out, e.Name)
+	}
+	return out
+}
+
+// Importers lists the registered import formats sorted by name (A29).
+func (r *Registry) Importers() []*script.Importer { return r.rt.Importers() }
+
+// ImporterNames returns the names of the registered import formats
+// (completion of flags declared with flag_values = "importers").
+func (r *Registry) ImporterNames() []string {
+	var out []string
+	for _, e := range r.rt.Importers() {
+		out = append(out, e.Name)
+	}
+	return out
+}
+
 // Complete returns the command names starting with prefix, sorted.
 func (r *Registry) Complete(prefix string) []string {
 	var out []string

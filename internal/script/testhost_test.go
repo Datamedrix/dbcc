@@ -23,10 +23,15 @@ func (h *testHost) Confirm(string) (bool, error)   { return h.yes, nil }
 func (h *testHost) Pick(string, []string) (int, error) {
 	return -1, ErrNoUI
 }
-func (h *testHost) EditorSet(string) error                      { return ErrNoUI }
-func (h *testHost) EditorOpen(string, string, *ObjectRef) error { return nil }
-func (h *testHost) About() error                                { return nil }
-func (h *testHost) ActiveResult() (*exec.Result, exec.View)     { return nil, nil }
+func (h *testHost) Form(string, []OptionSpec, map[string]any) (map[string]any, bool, error) {
+	return nil, false, ErrNoUI
+}
+func (h *testHost) OpenFile(SaveFileOptions) (string, bool, error) { return "", false, ErrNoUI }
+func (h *testHost) SaveFile(SaveFileOptions) (string, bool, error) { return "", false, ErrNoUI }
+func (h *testHost) EditorSet(string) error                         { return ErrNoUI }
+func (h *testHost) EditorOpen(string, string, *ObjectRef) error    { return nil }
+func (h *testHost) About() error                                   { return nil }
+func (h *testHost) ActiveResult() (*exec.Result, exec.View)        { return nil, nil }
 
 func (h *testHost) infos() string {
 	var b []string

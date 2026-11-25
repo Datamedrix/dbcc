@@ -102,6 +102,7 @@ func DefaultKeymap() *Keymap {
 	add(r, "prev_page", "shift+f6", "PrevPg", "Previous page")
 	add(r, "copy_cell", "c", "", "Copy cell")
 	add(r, "copy_row", "C", "", "Copy row")
+	add(r, "export", "e", "", "Export the result to a file (CSV, JSON, …)")
 	add(r, "prev_result", "[", "", "Previous result tab")
 	add(r, "next_result", "]", "", "Next result tab")
 	add(r, "close_result", "alt+x", "", "Close the result tab (Messages stays)")

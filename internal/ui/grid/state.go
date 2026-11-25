@@ -161,8 +161,11 @@ func (v *rowView) Keep(r exec.Row) bool {
 		if f.Col < len(r) {
 			c = r[f.Col]
 		}
-		numeric := f.Col < len(v.cols) && v.cols[f.Col].Numeric
-		if !matchFilter(c, f, numeric) {
+		var col exec.ColumnInfo
+		if f.Col < len(v.cols) {
+			col = v.cols[f.Col]
+		}
+		if !matchFilter(c, f, col) {
 			return false
 		}
 	}
@@ -205,7 +208,11 @@ func (v *rowView) indices(n int, row func(int) exec.Row) []int {
 			if sk.Col < len(r) {
 				c = r[sk.Col]
 			}
-			keys[p*nk+k] = makeSortVal(c, sk.Col < len(v.cols) && v.cols[sk.Col].Numeric)
+			var col exec.ColumnInfo
+			if sk.Col < len(v.cols) {
+				col = v.cols[sk.Col]
+			}
+			keys[p*nk+k] = makeSortVal(c, col)
 		}
 	}
 	perm := make([]int, len(idx))
@@ -240,15 +247,18 @@ type sortVal struct {
 	isBin bool
 }
 
-func makeSortVal(c any, numeric bool) sortVal {
+// makeSortVal is the sort key of a cell of column col: in a numeric column
+// the text's numeric value in the column's format (exec.ParseNumber, a
+// decimal comma too), else — and for text that does not parse — the text.
+func makeSortVal(c any, col exec.ColumnInfo) sortVal {
 	switch x := c.(type) {
 	case nil:
 		return sortVal{null: true}
 	case exec.Binary:
 		return sortVal{b: x, isBin: true}
 	case string:
-		if numeric {
-			if f, err := strconv.ParseFloat(strings.TrimSpace(x), 64); err == nil {
+		if col.Numeric {
+			if f, ok := exec.ParseNumber(x, col.Decimal); ok {
 				return sortVal{isNum: true, num: f}
 			}
 		}
@@ -297,7 +307,21 @@ func boolCmp(a, b bool) int {
 }
 
 // matchFilter applies one column filter locally. NULL only matches is NULL.
-func matchFilter(c any, f ColumnFilter, numeric bool) bool {
+// filterVal is the comparison value the owner typed for column col: in the
+// column's number format (the prompt is pre-filled with the cell's text),
+// and in a decimal-comma column also with a point ("1000.5"), as long as
+// that is not a valid comma number itself ("1.234" means 1234 there).
+func filterVal(text string, col exec.ColumnInfo) sortVal {
+	v := makeSortVal(text, col)
+	if col.Numeric && col.Decimal == ',' && !v.isNum {
+		if f, ok := exec.ParseNumber(text, '.'); ok {
+			return sortVal{isNum: true, num: f}
+		}
+	}
+	return v
+}
+
+func matchFilter(c any, f ColumnFilter, col exec.ColumnInfo) bool {
 	switch f.Op {
 	case OpIsNull:
 		return c == nil
@@ -320,7 +344,7 @@ func matchFilter(c any, f ColumnFilter, numeric bool) bool {
 	case OpStartsWith:
 		return strings.HasPrefix(strings.ToLower(s), strings.ToLower(f.Value))
 	}
-	cmp := compareVals(makeSortVal(s, numeric), makeSortVal(f.Value, numeric))
+	cmp := compareVals(makeSortVal(s, col), filterVal(f.Value, col))
 	switch f.Op {
 	case OpEquals:
 		return cmp == 0

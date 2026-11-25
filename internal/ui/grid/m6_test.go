@@ -854,3 +854,48 @@ func TestPrompts(t *testing.T) {
 		t.Fatal("handled without OpenPrompt")
 	}
 }
+
+// TestDecimalCommaSortAndFilter: a numeric column with a decimal comma
+// sorts and filters by value; text that does not parse sorts after the
+// numbers as before; the filter value is typed in the column's format, a
+// point works too where it is not a grouping.
+func TestDecimalCommaSortAndFilter(t *testing.T) {
+	cols := []exec.ColumnInfo{{Name: "betrag", Numeric: true, Decimal: ','}, {Name: "id"}}
+	rows := []exec.Row{{"1.234,50", "a"}, {"-3,5", "b"}, {"999", "c"}, {nil, "d"}, {"n/a", "e"}, {"12.000", "f"}, {"1200,5", "g"}}
+	g := New(exec.NewResult("t", cols, rows), Options{})
+	g.Action("sort")
+	if got := column(g, 0); !reflect.DeepEqual(got, []any{nil, "-3,5", "999", "1200,5", "1.234,50", "12.000", "n/a"}) {
+		t.Fatalf("asc = %v", got)
+	}
+	g.Action("sort")
+	if got := column(g, 0); !reflect.DeepEqual(got, []any{"n/a", "12.000", "1.234,50", "1200,5", "999", "-3,5", nil}) {
+		t.Fatalf("desc = %v", got)
+	}
+	g.Action("sort") // off
+	ops := []struct {
+		f    ColumnFilter
+		want []any
+	}{
+		// "n/a" does not parse: text sorts above every number, as in any numeric column
+		{ColumnFilter{Col: 0, Op: OpGreater, Value: "1000,5"}, []any{"a", "e", "f", "g"}},
+		{ColumnFilter{Col: 0, Op: OpGreater, Value: "1000.5"}, []any{"a", "e", "f", "g"}}, // a point is accepted
+		{ColumnFilter{Col: 0, Op: OpGreater, Value: "1.300"}, []any{"e", "f"}},            // 1.300 = 1300 here (1.234,50 is below)
+		{ColumnFilter{Col: 0, Op: OpGreaterEq, Value: "1200,50"}, []any{"a", "e", "f", "g"}},
+		{ColumnFilter{Col: 0, Op: OpLess, Value: "0"}, []any{"b"}},
+		{ColumnFilter{Col: 0, Op: OpLessEq, Value: "999"}, []any{"b", "c"}},
+		{ColumnFilter{Col: 0, Op: OpEquals, Value: "1234,5"}, []any{"a"}},
+		{ColumnFilter{Col: 0, Op: OpNotEquals, Value: "1.234,50"}, []any{"b", "c", "e", "f", "g"}},
+		{ColumnFilter{Col: 0, Op: OpEquals, Value: "12000"}, []any{"f"}},
+	}
+	for _, o := range ops {
+		g.AddFilter(o.f)
+		if got := column(g, 1); !reflect.DeepEqual(got, o.want) {
+			t.Errorf("%v %q: %v want %v", o.f.Op, o.f.Value, got, o.want)
+		}
+		g.Action("clear_filters")
+	}
+	// A point column is unchanged: "1,5" is text there.
+	if v := makeSortVal("1,5", exec.ColumnInfo{Numeric: true}); v.isNum {
+		t.Error("1,5 is a number in a point column")
+	}
+}

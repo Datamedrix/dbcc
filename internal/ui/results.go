@@ -117,6 +117,17 @@ func (r *ResultTabs) Select(i int) {
 	}
 }
 
+// Shows reports whether g is the grid of an open result tab (a job that
+// finishes after its tab was closed must not fill a detached grid).
+func (r *ResultTabs) Shows(g *grid.Grid) bool {
+	for _, t := range r.tabs {
+		if t.Grid == g && g != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // Close closes result tab i and frees its memory; the Messages tab can
 // never be closed. An open lazy cursor is closed, which releases the main
 // session.
@@ -181,7 +192,7 @@ func (r *ResultTabs) render() {
 	for i, t := range r.tabs {
 		title := tview.Escape(t.Title)
 		if t.Grid != nil {
-			if res := t.Grid.Result(); res != nil && (res.Partial || res.Capped) {
+			if res := t.Grid.Result(); res != nil && res.Incomplete() {
 				title += "*"
 			}
 		}

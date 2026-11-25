@@ -108,9 +108,9 @@ func TestM1DataCommands(t *testing.T) {
 				{"ll p_noop", ExitSQL, "ll: p_noop is a procedure, not a table or view"},
 				{"wc /it/nodb/customers", ExitSQL, "no such object"},
 				{"ll /nosuchprofile/db/t", ExitSQL, `unknown profile "nosuchprofile"`},
-				{"head", ExitUsage, "head: usage: head <table|view> [n]"},
+				{"head", ExitUsage, "head: usage: head <table|view|file:path> [n]"},
 				{"head customers x", ExitUsage, "must be an integer"},
-				{"wc a b", ExitUsage, "usage: wc <table|view>"},
+				{"wc a b", ExitUsage, "usage: wc <table|view|file:path>"},
 				{"ll 'customers", ExitUsage, "unterminated quote"},
 			}
 			for _, f := range fails {

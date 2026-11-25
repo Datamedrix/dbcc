@@ -48,6 +48,14 @@ func (rt *Runtime) ctxMethods() *lua.LTable {
 	m["copy_sql"] = rt.apiCopySQL
 	m["replace_script"] = rt.apiReplaceScript
 	m["export"] = rt.apiExport
+	m["export_with"] = rt.apiExportWith
+	m["form"] = rt.apiForm
+	m["save_file"] = rt.apiSaveFile
+	m["result_info"] = rt.apiResultInfo
+	m["file_grid"] = rt.apiFileGrid
+	m["file_count"] = rt.apiFileCount
+	m["file_info"] = rt.apiFileInfo
+	m["open_file"] = rt.apiOpenFile
 	m["history"] = rt.apiHistory
 	t := rt.L.NewTable()
 	for name, f := range m {
@@ -78,7 +86,7 @@ func (rt *Runtime) newCtx(conn string) *lua.LTable {
 	return t
 }
 
-// refreshCtx sets the data fields of ctx: command, path, dialect,
+// refreshCtx sets the data fields of ctx: command, path, ui, dialect,
 // has_schemas, profile.
 func (rt *Runtime) refreshCtx(t *lua.LTable) {
 	ws := rt.env.Workspace
@@ -86,6 +94,11 @@ func (rt *Runtime) refreshCtx(t *lua.LTable) {
 		t.RawSetString("command", lua.LString(rt.inv.cmd.Name))
 	}
 	t.RawSetString("path", rt.pathTable(ws.Path()))
+	ui := false
+	if h, ok := rt.env.Host.(Interactive); ok {
+		ui = h.Interactive()
+	}
+	t.RawSetString("ui", lua.LBool(ui))
 	var s *session.Session
 	if conn := luaFieldString(t, "conn"); conn != "" {
 		s = ws.Sessions()[conn]
@@ -563,6 +576,17 @@ func objectPath(t *lua.LTable) (meta.Path, bool) {
 // ctx:resolve(name, kinds) -> object
 func (rt *Runtime) apiResolve(L *lua.LState, self *lua.LTable) int {
 	name := L.CheckString(2)
+	if strings.HasPrefix(name, FilePrefix) {
+		// A file (A29): no connection needed, the file system is not touched.
+		if p := strings.TrimPrefix(name, FilePrefix); strings.TrimSpace(p) == "" {
+			return rt.raisef("%q: a file path is missing after %s", name, FilePrefix)
+		}
+		if kinds := kindsArg(L, 3); len(kinds) > 0 {
+			return rt.raisef("%s is a file, not a %s", name, kinds[0])
+		}
+		L.Push(rt.fileObject(name))
+		return 1
+	}
 	r, err := rt.ResolveObject(rt.gctx(), luaFieldString(self, "conn"), name, kindsArg(L, 3))
 	if err != nil {
 		return rt.raise(err)
@@ -575,6 +599,10 @@ func (rt *Runtime) apiResolve(L *lua.LState, self *lua.LTable) int {
 // a resolved object or a path table). Its SQL helpers and execution
 // primitives run on that connection; ctx.path stays the current path.
 func (rt *Runtime) apiOn(L *lua.LState, self *lua.LTable) int {
+	if isFileName(L.Get(2)) {
+		L.Push(self) // a file has no connection (A29)
+		return 1
+	}
 	var conn string
 	switch v := L.Get(2).(type) {
 	case lua.LString:

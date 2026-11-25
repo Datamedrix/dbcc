@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"dbcc/internal/meta"
@@ -27,6 +28,10 @@ type ColumnInfo struct {
 	DBType  string
 	Numeric bool
 	Binary  bool
+	// Decimal is the decimal separator of a numeric text column: ',' for
+	// a decimal comma (file results, A29); 0 means a point (SQL results).
+	// The grid reads the text with ParseNumber.
+	Decimal rune
 }
 
 // Origin marks a table-origin result (spec 10.3).
@@ -34,6 +39,27 @@ type Origin struct {
 	Object meta.Path
 	SQL    string      // qualified object name
 	Table  *meta.Table // optional metadata
+}
+
+// FileOrigin marks a result read from a file by an import plugin (A29). It
+// is a free result (no Origin) that belongs to no session; paging, rerun
+// and export reopen the file through the plugin.
+type FileOrigin struct {
+	Path     string
+	Importer string
+	Options  map[string]any // validated, defaults included
+	Limit    int            // only the first Limit rows when HasLimit (0: none)
+	Tail     int            // only the last Tail rows when HasTail (0: none)
+	HasLimit bool
+	HasTail  bool
+}
+
+// RowLimit is the number of rows to read: Limit when set, else -1 (all).
+func (o *FileOrigin) RowLimit() int {
+	if o.HasLimit {
+		return o.Limit
+	}
+	return -1
 }
 
 // Result is one result set. Rows holds what has been loaded; Cursor is
@@ -74,6 +100,9 @@ type Result struct {
 	released bool // Release was called: a page load in flight must not refill it
 	reopenFn func(ctx context.Context, work func(c *Cursor) error) error
 	follow   *follower // non-nil for a following result (tail -f, follow.go)
+
+	// File is set for a result read from a file (A29).
+	File *FileOrigin
 }
 
 // Paging errors.
@@ -91,6 +120,37 @@ var (
 	// re-run and earlier pages are no longer in memory.
 	ErrEarlierPages = errors.New("the whole result is not available: the statement is not a read query and earlier pages are gone")
 )
+
+// NewFileResult builds a lazily loaded file result (A29) on cursor c:
+// pages of pageSize rows (0: no paging), chunks of fetchSize; reopen
+// re-reads the file from the start (paging back, export, after reload).
+// The caller loads the first chunk with Fetch.
+func NewFileResult(title string, cols []ColumnInfo, c *Cursor, origin *FileOrigin, pageSize, fetchSize int,
+	reopen func(ctx context.Context, work func(c *Cursor) error) error) *Result {
+	r := &Result{Title: title, Columns: cols, cursor: c, File: origin, PageSize: pageSize, FetchSize: fetchSize}
+	r.SetReopen(true, reopen)
+	r.PartialOnClose(c)
+	return r
+}
+
+// PartialOnClose makes closing source cursor c before its end (an error,
+// F8, reload) mark the result partial while c is its current cursor, so
+// the status shows it and the next page reopens the file.
+func (r *Result) PartialOnClose(c *Cursor) {
+	c.onClose = func() { r.markPartial(c) }
+}
+
+// Incomplete reports Partial or Capped under the result's lock (the UI
+// reads it while the worker may mark the result partial).
+func (r *Result) Incomplete() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Partial || r.Capped
+}
+
+// MarkPartial marks the result partial when c, its current cursor, is
+// closed before the end (a file cursor closed by reload, A29).
+func (r *Result) MarkPartial(c *Cursor) { r.markPartial(c) }
 
 // NewResult builds a fully buffered result.
 func NewResult(title string, cols []ColumnInfo, rows []Row) *Result {
@@ -525,27 +585,120 @@ func FormatCount(n int) string {
 	return b.String()
 }
 
-// Cursor wraps an open *sql.Rows positioned on one result set.
+// RowSource is what a Cursor reads from when it does not wrap *sql.Rows
+// directly: a file read by an import plugin (A29). The paging, Stream and
+// Drain code of Result is the same for both.
+type RowSource interface {
+	// Next reads the next row. With scan false the row is only skipped
+	// and may be nil. ok is false at the end or on an error (err).
+	Next(scan bool) (row Row, ok bool, err error)
+	// Close releases the source. It is called once, with the cursor's
+	// lock held.
+	Close() error
+}
+
+// Interrupter is implemented by sources whose reads can be stopped from
+// another goroutine. Cursor.Close then never waits for a read in flight
+// (closing a result tab on the UI goroutine while the worker reads): it
+// calls Interrupt, and the read ends with ErrCursorClosed and closes the
+// source itself.
+type Interrupter interface{ Interrupt() }
+
+// ErrCursorClosed ends a read that was in flight when its cursor was
+// closed (Interrupter sources only).
+var ErrCursorClosed = errors.New("the result was closed while its rows were being read")
+
+// Cursor wraps an open *sql.Rows positioned on one result set, or a
+// RowSource. Reads are serialised by mu; Done and the end state are
+// atomics, so the UI goroutine (More, Status) never waits for a read.
 type Cursor struct {
 	mu        sync.Mutex
 	rows      *sql.Rows
+	src       RowSource // used instead of rows when set
 	cols      []ColumnInfo
-	exhausted bool // reached the end of this result set
-	closed    bool
+	exhausted atomic.Bool // reached the end of this result set
+	closed    atomic.Bool
+	closeReq  atomic.Bool // Close was called on an Interrupter source
 	onClose   func()
 	abort     func() // stops the statement on the server (see Close)
 	err       error
 }
 
-// exhaustedNow reports whether the end of the result set was reached.
-func (c *Cursor) exhaustedNow() bool { c.mu.Lock(); defer c.mu.Unlock(); return c.exhausted }
+// NewSourceCursor returns a cursor that reads src (A29).
+func NewSourceCursor(src RowSource, cols []ColumnInfo) *Cursor {
+	return &Cursor{src: src, cols: cols}
+}
+
+// next reads one row from the source.
+func (c *Cursor) next(scan bool) (Row, bool, error) {
+	if c.src != nil {
+		return c.src.Next(scan)
+	}
+	if !c.rows.Next() {
+		return nil, false, c.rows.Err()
+	}
+	if !scan {
+		return nil, true, nil
+	}
+	row, err := scanRow(c.rows, c.cols)
+	if err != nil {
+		return nil, false, err
+	}
+	return row, true, nil
+}
+
+// interrupted ends a read when Close was requested meanwhile (lock held).
+func (c *Cursor) interrupted() bool {
+	if !c.closeReq.Load() {
+		return false
+	}
+	c.err = ErrCursorClosed
+	c.closeLocked()
+	return true
+}
+
+// unlock releases mu; a Close requested while this read held the lock
+// (TryLock failed there) is completed here.
+func (c *Cursor) unlock() {
+	c.mu.Unlock()
+	if c.closeReq.Load() && !c.closed.Load() && c.mu.TryLock() {
+		c.closeLocked()
+		c.mu.Unlock()
+	}
+}
+
+// exhaustedNow reports whether the end of the result set was reached. For
+// a SQL cursor it waits for a read in flight (markPartial must not call a
+// complete result partial while its last chunk is being read — e.g. when
+// deleting a profile closes the session on the UI goroutine); a source
+// cursor answers at once, so the UI never waits for a stuck importer.
+func (c *Cursor) exhaustedNow() bool {
+	if c.src == nil {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+	}
+	return c.exhausted.Load()
+}
+
+// ended records why the source returned no row (lock held): the end, or
+// — for a RowSource — an error, after which the cursor is closed but not
+// exhausted, so its result stays partial and pages can be reopened. A SQL
+// cursor counts an error as the end, as before.
+func (c *Cursor) ended(err error) {
+	c.err = err
+	if err != nil && c.src != nil {
+		c.closeLocked()
+		return
+	}
+	c.exhausted.Store(true)
+}
 
 // skip reads and discards up to n rows and returns how many it read.
 // Cancelling ctx (or the statement) stops it.
 func (c *Cursor) skip(ctx context.Context, n int) (int, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.exhausted || c.closed {
+	defer c.unlock()
+	if c.exhausted.Load() || c.closed.Load() {
 		return 0, c.err
 	}
 	i := 0
@@ -555,9 +708,15 @@ func (c *Cursor) skip(ctx context.Context, n int) (int, error) {
 				return i, err
 			}
 		}
-		if !c.rows.Next() {
-			c.exhausted = true
-			c.err = c.rows.Err()
+		if c.interrupted() {
+			return i, c.err
+		}
+		_, ok, err := c.next(false)
+		if !ok {
+			if c.interrupted() {
+				return i, c.err
+			}
+			c.ended(err)
 			c.closeLocked()
 			break
 		}
@@ -566,31 +725,31 @@ func (c *Cursor) skip(ctx context.Context, n int) (int, error) {
 }
 
 // Done reports whether no more rows can be fetched.
-func (c *Cursor) Done() bool { c.mu.Lock(); defer c.mu.Unlock(); return c.exhausted || c.closed }
+func (c *Cursor) Done() bool { return c.exhausted.Load() || c.closed.Load() }
 
 // Fetch reads up to n rows.
 func (c *Cursor) Fetch(n int) ([]Row, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.exhausted || c.closed {
+	defer c.unlock()
+	if c.exhausted.Load() || c.closed.Load() {
 		return nil, c.err
 	}
 	out := make([]Row, 0, n)
 	for len(out) < n {
-		if !c.rows.Next() {
-			c.exhausted = true
-			c.err = c.rows.Err()
-			break
+		if c.interrupted() {
+			return out, c.err
 		}
-		row, err := scanRow(c.rows, c.cols)
-		if err != nil {
-			c.err = err
-			c.exhausted = true
+		row, ok, err := c.next(true)
+		if !ok {
+			if c.interrupted() {
+				return out, c.err
+			}
+			c.ended(err)
 			break
 		}
 		out = append(out, row)
 	}
-	if c.exhausted {
+	if c.exhausted.Load() {
 		c.closeLocked()
 	}
 	return out, c.err
@@ -605,14 +764,27 @@ var DrainGrace = 200 * time.Millisecond
 // Close releases the underlying rows; idempotent. If unread rows remain
 // and discarding them takes longer than DrainGrace, the statement is
 // aborted on the server (KILL QUERY or driver cancel) and the connection
-// stays usable.
+// stays usable. An Interrupter source is interrupted instead and never
+// waited for.
 func (c *Cursor) Close() error {
+	if ic, ok := c.src.(Interrupter); ok {
+		if c.closed.Load() {
+			return nil
+		}
+		c.closeReq.Store(true)
+		ic.Interrupt()
+		if c.mu.TryLock() {
+			c.closeLocked()
+			c.mu.Unlock()
+		}
+		return nil
+	}
 	c.mu.Lock()
-	if c.closed {
+	if c.closed.Load() {
 		c.mu.Unlock()
 		return nil
 	}
-	abort, pending := c.abort, !c.exhausted
+	abort, pending := c.abort, !c.exhausted.Load()
 	if !pending || abort == nil {
 		c.closeLocked()
 		c.mu.Unlock()
@@ -636,11 +808,15 @@ func (c *Cursor) Close() error {
 }
 
 func (c *Cursor) closeLocked() {
-	if c.closed {
+	if c.closed.Load() {
 		return
 	}
-	c.closed = true
-	c.rows.Close()
+	c.closed.Store(true)
+	if c.src != nil {
+		c.src.Close()
+	} else {
+		c.rows.Close()
+	}
 	if c.onClose != nil {
 		c.onClose()
 	}

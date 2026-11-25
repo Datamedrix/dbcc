@@ -29,6 +29,11 @@ type Env struct {
 	Runner func(s *session.Session) *exec.Runner
 	// History is the statement history for ctx:history; nil means none.
 	History *history.History
+	// Files is the state of file results that outlives this runtime (A29):
+	// the runtime that reads them now, settings remembered per path, page
+	// and chunk sizes. Nil: a private state without memory and without
+	// paging (headless).
+	Files *Files
 	// Reload, if set, schedules reloading all commands (embedded defaults
 	// and user scripts) after the running command has finished; it
 	// returns where user scripts are read from. Nil: not available
@@ -51,6 +56,10 @@ type Runtime struct {
 	env Env
 
 	commands map[string]*Command
+	// exporters are the registered export formats (dbcc.exporter), guarded
+	// by cmdMu like commands.
+	exporters map[string]*Exporter
+	importers map[string]*Importer
 	// invMu guards inv for Interrupt (called from other goroutines).
 	invMu sync.Mutex
 	// cmdMu guards commands: the registry is read from the UI goroutine
@@ -58,18 +67,37 @@ type Runtime struct {
 	cmdMu sync.RWMutex
 	// staged collects registrations while a script loads; they are
 	// committed only when the whole script loaded without error.
-	staged   []*Command
-	loading  bool
-	loadSrc  string
-	loadDef  bool
-	inv      *invocation
-	ctxMeta  *lua.LTable
-	pathMeta *lua.LTable
-	objMeta  *lua.LTable
+	staged    []*Command
+	stagedExp []*Exporter
+	stagedImp []*Importer
+	loading   bool
+	loadSrc   string
+	loadDef   bool
+	inv       *invocation
+	ctxMeta   *lua.LTable
+	pathMeta  *lua.LTable
+	objMeta   *lua.LTable
+	fileMeta  *lua.LTable
 	// goErr remembers the Go error behind the last raised Lua error so
 	// that callers can still use errors.Is/As (keyed by its message).
 	goErr    error
 	goErrMsg string
+	// exportBusy is set while an exporter's write function runs; it stops
+	// a nested ctx:export_with from streaming the same result twice.
+	exportBusy bool
+
+	// bgCtx/bgStop: the Lua context while an importer runs outside a
+	// command (grid paging, rerun); bgOwner is the file source whose Lua
+	// code runs now. Guarded by invMu (Interrupt and closing a source come
+	// from other goroutines).
+	bgCtx   context.Context
+	bgStop  context.CancelFunc
+	bgOwner *fileSource
+	// sources are the open file sources of this runtime; Close closes
+	// them first (their Lua functions die with the state).
+	srcMu   sync.Mutex
+	sources map[*fileSource]struct{}
+	closed  bool
 }
 
 type invocation struct {
@@ -82,6 +110,10 @@ type invocation struct {
 	// confirmed: the owner said yes to ctx:confirm in this write command;
 	// its following ctx:exec calls do not ask again.
 	confirmed bool
+	// chosen holds the paths the owner chose in this invocation (normalised
+	// with exportPath): values of "file" arguments and flags, and paths
+	// returned by ctx:save_file. ctx:export_with writes only to these.
+	chosen map[string]bool
 }
 
 // New creates a runtime with the sandboxed Lua state and the API.
@@ -89,15 +121,39 @@ func New(env Env) *Runtime {
 	if env.Workspace == nil || env.Host == nil {
 		panic("script.New: Workspace and Host are required")
 	}
-	rt := &Runtime{env: env, commands: map[string]*Command{}}
+	rt := &Runtime{env: env, commands: map[string]*Command{}, exporters: map[string]*Exporter{},
+		importers: map[string]*Importer{}, sources: map[*fileSource]struct{}{}}
+	if rt.env.Files == nil {
+		rt.env.Files = NewFiles(0, 0, false)
+		rt.env.Files.Use(rt)
+	}
 	rt.L = newSandbox()
 	rt.installPrint()
 	rt.installAPI()
 	return rt
 }
 
-// Close releases the Lua state.
-func (rt *Runtime) Close() { rt.L.Close() }
+// Close releases the Lua state. Open file cursors of this runtime are
+// closed first and their results marked partial: their Lua functions die
+// with the state (reload, A29); paging reopens them through the runtime
+// that is current then. Call it on the goroutine that uses the runtime.
+func (rt *Runtime) Close() {
+	rt.srcMu.Lock()
+	if rt.closed {
+		rt.srcMu.Unlock()
+		return
+	}
+	rt.closed = true
+	srcs := make([]*fileSource, 0, len(rt.sources))
+	for s := range rt.sources {
+		srcs = append(srcs, s)
+	}
+	rt.srcMu.Unlock()
+	for _, s := range srcs {
+		s.closeByRuntime()
+	}
+	rt.L.Close()
+}
 
 // Env returns the environment the runtime was created with.
 func (rt *Runtime) Env() Env { return rt.env }
@@ -125,7 +181,8 @@ func (rt *Runtime) Commands() []*Command {
 // Load runs a command script. chunk names it in error messages; isDefault
 // marks the embedded defaults. All registrations of the script take effect
 // only if it loads completely; on any error none do (so a broken user
-// override leaves the default active). It returns the registered names.
+// override leaves the default active). It returns the registered names
+// (export formats as "exporter:<name>", import formats as "importer:<name>").
 func (rt *Runtime) Load(chunk, src string, isDefault bool) ([]string, error) {
 	if rt.inv != nil || rt.loading {
 		return nil, errors.New("cannot load a script while a command runs")
@@ -147,8 +204,8 @@ func (rt *Runtime) Load(chunk, src string, isDefault bool) ([]string, error) {
 	rt.L.SetContext(ctx)
 	defer rt.L.RemoveContext()
 
-	rt.loading, rt.loadSrc, rt.loadDef, rt.staged = true, chunk, isDefault, nil
-	defer func() { rt.loading, rt.staged = false, nil }()
+	rt.loading, rt.loadSrc, rt.loadDef, rt.staged, rt.stagedExp, rt.stagedImp = true, chunk, isDefault, nil, nil, nil
+	defer func() { rt.loading, rt.staged, rt.stagedExp, rt.stagedImp = false, nil, nil, nil }()
 	rt.L.Push(fn)
 	if err := rt.L.PCall(0, 0, nil); err != nil {
 		if ctx.Err() != nil {
@@ -166,7 +223,69 @@ func (rt *Runtime) Load(chunk, src string, isDefault bool) ([]string, error) {
 		rt.commands[c.Name] = c
 		names = append(names, c.Name)
 	}
+	for _, e := range rt.stagedExp {
+		if old, ok := rt.exporters[e.Name]; ok && !e.Default && (old.Default || old.Replaces) {
+			e.Replaces = true
+		}
+		rt.exporters[e.Name] = e
+		names = append(names, "exporter:"+e.Name)
+	}
+	for _, e := range rt.stagedImp {
+		if old, ok := rt.importers[e.Name]; ok && !e.Default && (old.Default || old.Replaces) {
+			e.Replaces = true
+		}
+		rt.importers[e.Name] = e
+		names = append(names, "importer:"+e.Name)
+	}
 	return names, nil
+}
+
+// Exporter returns the registered export format with the given name.
+func (rt *Runtime) Exporter(name string) (*Exporter, bool) {
+	rt.cmdMu.RLock()
+	defer rt.cmdMu.RUnlock()
+	e, ok := rt.exporters[name]
+	return e, ok
+}
+
+// Exporters returns all registered export formats sorted by name.
+func (rt *Runtime) Exporters() []*Exporter {
+	rt.cmdMu.RLock()
+	out := make([]*Exporter, 0, len(rt.exporters))
+	for _, e := range rt.exporters {
+		out = append(out, e)
+	}
+	rt.cmdMu.RUnlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// OpenFiles is the number of file sources of this runtime that are open
+// (diagnostics and tests: every closed tab must bring it back down).
+func (rt *Runtime) OpenFiles() int {
+	rt.srcMu.Lock()
+	defer rt.srcMu.Unlock()
+	return len(rt.sources)
+}
+
+// Importer returns the registered import format with the given name.
+func (rt *Runtime) Importer(name string) (*Importer, bool) {
+	rt.cmdMu.RLock()
+	defer rt.cmdMu.RUnlock()
+	e, ok := rt.importers[name]
+	return e, ok
+}
+
+// Importers returns all registered import formats sorted by name.
+func (rt *Runtime) Importers() []*Importer {
+	rt.cmdMu.RLock()
+	out := make([]*Importer, 0, len(rt.importers))
+	for _, e := range rt.importers {
+		out = append(out, e)
+	}
+	rt.cmdMu.RUnlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // LoadReader is Load for a reader.
@@ -201,7 +320,7 @@ func (rt *Runtime) Run(ctx context.Context, cmd *Command, args []string) error {
 	luaCtx, stop := context.WithCancel(context.Background())
 	defer stop()
 	rt.invMu.Lock()
-	rt.inv = &invocation{cmd: cmd, ctx: ctx, stop: stop}
+	rt.inv = &invocation{cmd: cmd, ctx: ctx, stop: stop, chosen: chosenFiles(cmd, flags, args)}
 	rt.invMu.Unlock()
 	rt.goErr, rt.goErrMsg = nil, ""
 	defer func() {
@@ -224,6 +343,8 @@ func (rt *Runtime) Run(ctx context.Context, cmd *Command, args []string) error {
 			flagT.RawSetString(k, lua.LBool(x))
 		case string:
 			flagT.RawSetString(k, lua.LString(x))
+		case []string:
+			flagT.RawSetString(k, strList(L, x))
 		}
 	}
 	L.Push(cmd.fn)
@@ -248,14 +369,68 @@ func (rt *Runtime) Run(ctx context.Context, cmd *Command, args []string) error {
 	return nil
 }
 
+// chosenFiles collects the normalised values of the positional arguments
+// and flags that the command declares with type "file" (and file:<path>
+// values of "object" ones): the owner typed them, so the command may write
+// (ctx:export_with) and read (ctx:file_grid, A29) there.
+func chosenFiles(cmd *Command, flags map[string]any, args []string) map[string]bool {
+	out := map[string]bool{}
+	for i, v := range args {
+		if len(cmd.Args) == 0 {
+			break
+		}
+		spec := cmd.Args[len(cmd.Args)-1]
+		if i < len(cmd.Args) {
+			spec = cmd.Args[i]
+		} else if !spec.Variadic {
+			continue
+		}
+		addChosen(out, spec.Type, v)
+	}
+	for name, v := range flags {
+		f, ok := cmd.Flag(name)
+		if !ok {
+			continue
+		}
+		switch x := v.(type) {
+		case string:
+			addChosen(out, ArgType(f.Type), x)
+		case []string:
+			for _, p := range x {
+				addChosen(out, ArgType(f.Type), p)
+			}
+		}
+	}
+	return out
+}
+
+// addChosen records the path the owner typed for an argument of type t:
+// a "file" value, or an "object" value written file:<path> (A29).
+func addChosen(out map[string]bool, t ArgType, v string) {
+	switch {
+	case t == ArgFile:
+		// file:<path> is accepted on file arguments too, as everywhere else.
+		out[exportPath(strings.TrimPrefix(v, FilePrefix))] = true
+	case t == ArgObject && strings.HasPrefix(v, FilePrefix):
+		out[exportPath(strings.TrimPrefix(v, FilePrefix))] = true
+	}
+}
+
 // Interrupt stops the Lua code of the running command, e.g. an endless
-// loop (F8 in the UI, Ctrl+C headless). A primitive that is waiting for the
+// loop (F8 in the UI, Ctrl+C headless), or of an importer reading a file
+// outside a command (grid paging, A29). A primitive that is waiting for the
 // database finishes first; cancel the statement through the session for
 // that. Safe to call from any goroutine; no-op when nothing runs.
 func (rt *Runtime) Interrupt() bool {
 	rt.invMu.Lock()
 	defer rt.invMu.Unlock()
 	if rt.inv == nil || rt.inv.stop == nil {
+		// Outside a command an importer may be reading a file for the grid
+		// (paging, rerun): stop its Lua code.
+		if rt.bgOwner != nil && rt.bgStop != nil {
+			rt.bgStop()
+			return true
+		}
 		return false
 	}
 	rt.inv.stop()

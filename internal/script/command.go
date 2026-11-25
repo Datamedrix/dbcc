@@ -91,7 +91,18 @@ type FlagSpec struct {
 	// Values are the suggested values of a value flag (declared with
 	// flag_values); they only drive completion, any value is accepted.
 	Values []string
+	// ValuesFrom names a dynamic source of suggested values, declared as a
+	// string in flag_values instead of a list: "exporters" or "importers"
+	// (the names of the registered export or import formats, which change
+	// with reload).
+	ValuesFrom string
+	// Repeated is set for a value flag declared with the suffix "..."
+	// ({ o = "string..." }): every occurrence is collected into a list.
+	Repeated bool
 }
+
+// FlagValueSources are the dynamic value sources flag_values may name.
+var FlagValueSources = map[string]bool{"exporters": true, "importers": true}
 
 // TakesValue reports whether the flag is followed by a value.
 func (f FlagSpec) TakesValue() bool { return f.Type != FlagBool }
@@ -106,11 +117,15 @@ func ParseFlagSpecs(decl map[string]string) ([]FlagSpec, error) {
 		if !flagNameRE.MatchString(n) {
 			return nil, fmt.Errorf("flags: invalid flag name %q (letters, digits, '_' and '-', starting with a letter)", n)
 		}
-		ft := FlagType(t)
-		if ft != FlagBool && !argTypes[ArgType(t)] {
-			return nil, fmt.Errorf("flags.%s: unknown type %q (bool, object, path, profile, file, int, string)", n, t)
+		repeated := strings.HasSuffix(t, "...")
+		ft := FlagType(strings.TrimSuffix(t, "..."))
+		if ft != FlagBool && !argTypes[ArgType(ft)] {
+			return nil, fmt.Errorf("flags.%s: unknown type %q (bool, object, path, profile, file, int, string; a value type may end in \"...\" to repeat the flag)", n, t)
 		}
-		out = append(out, FlagSpec{Name: n, Type: ft})
+		if repeated && ft == FlagBool {
+			return nil, fmt.Errorf("flags.%s: a bool flag cannot be repeated (\"...\" needs a value type)", n)
+		}
+		out = append(out, FlagSpec{Name: n, Type: ft, Repeated: repeated})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -163,7 +178,8 @@ func isFlagWord(w string) bool {
 }
 
 // ParseFlags splits words into flag values and positional arguments.
-// Bool flags map to true, value flags to their string value. Errors are
+// Bool flags map to true, value flags to their string value, repeated
+// flags to a []string of all their values in order. Errors are
 // *UsageError.
 func (c *Command) ParseFlags(words []string) (map[string]any, []string, error) {
 	flags := map[string]any{}
@@ -207,6 +223,11 @@ func (c *Command) ParseFlags(words []string) (map[string]any, []string, error) {
 			if _, err := strconv.ParseInt(value, 10, 64); err != nil {
 				return nil, nil, &UsageError{Command: c.Name, Msg: fmt.Sprintf("flag -%s must be an integer, got %q; usage: %s", name, value, c.Usage)}
 			}
+		}
+		if f.Repeated {
+			list, _ := flags[name].([]string)
+			flags[name] = append(list, value)
+			continue
 		}
 		flags[name] = value
 	}
@@ -356,9 +377,12 @@ func validName(n string) error {
 func defaultUsage(name string, flags []FlagSpec, args []ArgSpec) string {
 	parts := []string{name}
 	for _, f := range flags {
-		if f.TakesValue() {
+		switch {
+		case f.Repeated:
+			parts = append(parts, "[-"+f.Name+" "+string(f.Type)+"]...")
+		case f.TakesValue():
 			parts = append(parts, "[-"+f.Name+" "+string(f.Type)+"]")
-		} else {
+		default:
 			parts = append(parts, "[-"+f.Name+"]")
 		}
 	}

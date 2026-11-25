@@ -17,10 +17,18 @@ func (rt *Runtime) installAPI() {
 	real := L.NewTable()
 	real.RawSetString("command", L.NewFunction(rt.luaCommand))
 	real.RawSetString("commands", L.NewFunction(rt.luaCommands))
+	real.RawSetString("exporter", L.NewFunction(rt.luaExporter))
+	real.RawSetString("exporters", L.NewFunction(rt.luaExporters))
+	real.RawSetString("importer", L.NewFunction(rt.luaImporter))
+	real.RawSetString("importers", L.NewFunction(rt.luaImporters))
 	fmtT := L.NewTable()
 	fmtT.RawSetString("table", L.NewFunction(rt.luaFmtTable))
 	fmtT.RawSetString("size", L.NewFunction(luaFmtSize))
 	fmtT.RawSetString("count", L.NewFunction(luaFmtCount))
+	fmtT.RawSetString("csv", L.NewFunction(luaFmtCSV))
+	fmtT.RawSetString("json", L.NewFunction(luaFmtJSON))
+	fmtT.RawSetString("cell", L.NewFunction(luaFmtCell))
+	fmtT.RawSetString("number", L.NewFunction(luaFmtNumber))
 	real.RawSetString("fmt", readOnly(L, fmtT, "dbcc.fmt"))
 	L.SetGlobal("dbcc", readOnly(L, real, "dbcc"))
 
@@ -31,6 +39,11 @@ func (rt *Runtime) installAPI() {
 	rt.pathMeta = L.NewTable()
 	rt.pathMeta.RawSetString("__tostring", L.NewFunction(func(L *lua.LState) int {
 		L.Push(L.CheckTable(1).RawGetString("str"))
+		return 1
+	}))
+	rt.fileMeta = L.NewTable()
+	rt.fileMeta.RawSetString("__tostring", L.NewFunction(func(L *lua.LState) int {
+		L.Push(L.CheckTable(1).RawGetString("path"))
 		return 1
 	}))
 	rt.objMeta = L.NewTable()
@@ -59,7 +72,8 @@ var commandFields = map[string]bool{"name": true, "usage": true, "help": true, "
 
 // dbcc.command{name=, usage=, help=, args=, flags=, write=, run=}
 // run is called as run(ctx, args, flags): args holds the positional
-// arguments, flags the given flags (bool flags true, value flags strings).
+// arguments, flags the given flags (bool flags true, value flags strings,
+// repeated flags declared as "type..." lists of strings).
 func (rt *Runtime) luaCommand(L *lua.LState) int {
 	t := L.CheckTable(1)
 	if !rt.loading {
@@ -154,8 +168,10 @@ func (rt *Runtime) luaCommand(L *lua.LState) int {
 			}
 			ks, ok1 := k.(lua.LString)
 			list, ok2 := val.(*lua.LTable)
-			if !ok1 || !ok2 {
-				ferr = "flag_values must map flag names to lists of strings, e.g. { t = { \"table\", \"view\" } }"
+			src, isSrc := val.(lua.LString)
+			if !ok1 || (!ok2 && !isSrc) || (isSrc && !FlagValueSources[string(src)]) {
+				// A string names a dynamic source: the registered export formats.
+				ferr = "flag_values must map flag names to lists of strings, e.g. { t = { \"table\", \"view\" } }, or to \"exporters\" or \"importers\""
 				return
 			}
 			idx := -1
@@ -166,6 +182,10 @@ func (rt *Runtime) luaCommand(L *lua.LState) int {
 			}
 			if idx < 0 || !c.Flags[idx].TakesValue() {
 				ferr = fmt.Sprintf("flag_values.%s: no such flag with a value", ks)
+				return
+			}
+			if isSrc {
+				c.Flags[idx].ValuesFrom = string(src)
 				return
 			}
 			var vals []string
@@ -213,7 +233,11 @@ func (rt *Runtime) luaCommands(L *lua.LState) int {
 		e.RawSetString("args", args)
 		flags := L.NewTable()
 		for _, f := range c.Flags {
-			flags.RawSetString(f.Name, lua.LString(string(f.Type)))
+			t := string(f.Type)
+			if f.Repeated {
+				t += "..."
+			}
+			flags.RawSetString(f.Name, lua.LString(t))
 		}
 		e.RawSetString("flags", flags)
 		e.RawSetString("write", lua.LBool(c.Write))
@@ -311,7 +335,13 @@ func luaFmtSize(L *lua.LState) int {
 		L.Push(lua.LString(""))
 		return 1
 	}
-	n := float64(L.CheckNumber(1))
+	L.Push(lua.LString(FormatSize(float64(L.CheckNumber(1)))))
+	return 1
+}
+
+// FormatSize renders a byte count like dbcc.fmt.size: "512 B", "16.0 KiB",
+// "1.5 MiB", … (also used by the file dialog).
+func FormatSize(n float64) string {
 	units := []string{"B", "KiB", "MiB", "GiB", "TiB", "PiB"}
 	i := 0
 	for n >= 1024 && i < len(units)-1 {
@@ -319,11 +349,9 @@ func luaFmtSize(L *lua.LState) int {
 		i++
 	}
 	if i == 0 {
-		L.Push(lua.LString(fmt.Sprintf("%.0f B", n)))
-	} else {
-		L.Push(lua.LString(fmt.Sprintf("%.1f %s", n, units[i])))
+		return fmt.Sprintf("%.0f B", n)
 	}
-	return 1
+	return fmt.Sprintf("%.1f %s", n, units[i])
 }
 
 // dbcc.fmt.count(n) -> "1,234,567".

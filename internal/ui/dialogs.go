@@ -24,6 +24,9 @@ type host struct{ a *App }
 
 var _ script.Host = (*host)(nil)
 
+// Interactive: the TUI shows dialogs (ctx.ui).
+func (h *host) Interactive() bool { return true }
+
 func (h *host) Result(r *exec.Result) {
 	a := h.a
 	// Table-origin results carry their metadata (pivot headers show the
@@ -129,6 +132,60 @@ func (h *host) Pick(title string, items []string) (int, error) {
 		return v, nil
 	case <-h.a.quit:
 		return -1, script.ErrNoUI
+	}
+}
+
+// Form shows the settings dialog of ctx:form (worker -> UI goroutine).
+func (h *host) Form(title string, fields []script.OptionSpec, values map[string]any) (map[string]any, bool, error) {
+	type result struct {
+		v  map[string]any
+		ok bool
+	}
+	ch := make(chan result, 1)
+	h.a.tv.QueueUpdateDraw(func() {
+		h.a.showForm(title, fields, values, func(v map[string]any, ok bool) { ch <- result{v, ok} })
+	})
+	select {
+	case r := <-ch:
+		return r.v, r.ok, nil
+	case <-h.a.quit:
+		return nil, false, script.ErrNoUI
+	}
+}
+
+// SaveFile shows the file dialog of ctx:save_file (worker -> UI goroutine).
+func (h *host) SaveFile(opts script.SaveFileOptions) (string, bool, error) {
+	type result struct {
+		path string
+		ok   bool
+	}
+	ch := make(chan result, 1)
+	h.a.tv.QueueUpdateDraw(func() {
+		h.a.showFileDialog(opts, false, func(p string, ok bool) { ch <- result{p, ok} })
+	})
+	select {
+	case r := <-ch:
+		return r.path, r.ok, nil
+	case <-h.a.quit:
+		return "", false, script.ErrNoUI
+	}
+}
+
+// OpenFile shows the file dialog in open mode (ctx:open_file, A29).
+func (h *host) OpenFile(opts script.SaveFileOptions) (string, bool, error) {
+	type result struct {
+		path string
+		ok   bool
+	}
+	ch := make(chan result, 1)
+	h.a.tv.QueueUpdateDraw(func() {
+		h.a.showFileDialog(opts, true, func(p string, ok bool) { ch <- result{p, ok} })
+	})
+	select {
+	case r := <-ch:
+		return r.path, r.ok, nil
+	case <-h.a.quit:
+		return "", false, script.ErrNoUI
 	}
 }
 

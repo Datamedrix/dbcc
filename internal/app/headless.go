@@ -221,21 +221,26 @@ func WriteResult(w io.Writer, format string, r *exec.Result, chunk int) error {
 // whose first word is a registered command runs that Lua command.
 func RunHeadless(ctx context.Context, env *Env) error {
 	o := env.Opts
-	if o.Profile == "" {
+	// A single command (-c) may run without a profile: it starts at "/",
+	// where file commands work (ll file:x.csv, A29) and SQL fails with
+	// "not connected". Scripts (-f, stdin) are SQL and need a profile.
+	if o.Profile == "" && o.Command == "" {
 		return usagef("headless mode needs a profile (-p <profile>)")
-	}
-	prof, err := env.Config.Profile(o.Profile)
-	if err != nil {
-		return &UsageError{err}
 	}
 	h := newHeadless(env)
 	defer h.ws.CloseAll()
-	start := "/" + prof.Name
-	if prof.Database != "" {
-		start += "/" + prof.Database
-	}
-	if _, err := h.ws.Chdir(ctx, start); err != nil {
-		return &UsageError{err}
+	if o.Profile != "" {
+		prof, err := env.Config.Profile(o.Profile)
+		if err != nil {
+			return &UsageError{err}
+		}
+		start := "/" + prof.Name
+		if prof.Database != "" {
+			start += "/" + prof.Database
+		}
+		if _, err := h.ws.Chdir(ctx, start); err != nil {
+			return &UsageError{err}
+		}
 	}
 
 	// Ctrl+C cancels the running statement through the dialect.
@@ -287,7 +292,7 @@ func RunHeadless(ctx context.Context, env *Env) error {
 		}
 		src = string(b)
 	}
-	err = h.runner(h.ws.Current()).RunScript(ctx, src, 0)
+	err := h.runner(h.ws.Current()).RunScript(ctx, src, 0)
 	return finish(env, err, h.sink)
 }
 

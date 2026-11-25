@@ -90,9 +90,11 @@ type App struct {
 	meta             *meta.Cache
 	popup            *complete.Popup
 	gridPromptClosed func()
-	autosave         *time.Timer // pending scratch autosave
-	maximized        string      // PaneEditor or PaneGrid while F11 is active
-	whereList        bool        // completion list of the WHERE prompt is open
+	autosave         *time.Timer   // pending scratch autosave
+	maximized        string        // PaneEditor or PaneGrid while F11 is active
+	whereList        bool          // completion list of the WHERE prompt is open
+	lastSaveDir      string        // directory of the last file chosen in the file dialog
+	files            *script.Files // file results across reloads (A29)
 }
 
 // Run starts the UI and blocks until it quits.
@@ -125,6 +127,7 @@ func New(opts Options) (*App, error) {
 		quit:       make(chan struct{}),
 		runners:    map[*session.Session]*exec.Runner{},
 	}
+	a.files = script.NewFiles(cfg.Settings.PageSize, cfg.Settings.FetchSize, true)
 	a.ws = session.NewWorkspace(cfg, a.promptPassword)
 	a.ws.BeforeDatabaseChange = a.txnDecision
 	a.ws.ConfirmHostKey = a.confirmHostKey
@@ -204,7 +207,7 @@ func (a *App) startup() {
 // reload the previous runtime is closed afterwards; a reload is scheduled
 // as its own job, so no command is running in the old Lua state.
 func (a *App) loadCommands(reload bool) {
-	rt := script.New(script.Env{Workspace: a.ws, Host: &host{a}, Runner: a.runner, History: a.hist,
+	rt := script.New(script.Env{Workspace: a.ws, Host: &host{a}, Runner: a.runner, History: a.hist, Files: a.files,
 		Reload: func() (string, error) {
 			a.do(func() { a.loadCommands(true) })
 			return a.opts.UserCmdDir, nil
@@ -220,6 +223,9 @@ func (a *App) loadCommands(reload bool) {
 	var old *command.Registry
 	// Published on the UI goroutine, which reads it (help, completion).
 	a.ui(func() { old, a.reg = a.reg, reg })
+	// File results reopen through the new runtime from now on; closing the
+	// old one closes its open file cursors (their tabs become partial).
+	a.files.Use(rt)
 	if reload {
 		if old != nil {
 			old.Runtime().Close()
@@ -840,6 +846,35 @@ func (a *App) gridAction(action string) bool {
 	}
 	switch action {
 	case "rerun":
+		if res := tab.Grid.Result(); res != nil && res.File != nil {
+			// A file result (A29): read the file again through its import
+			// format, on the worker (the importer is Lua).
+			g, origin, title := tab.Grid, res.File, res.Title
+			a.do(func() {
+				if a.reg == nil {
+					return
+				}
+				nr, err := a.reg.Runtime().FileResult(origin, title)
+				var placed atomic.Bool
+				a.ui(func() {
+					if err != nil {
+						a.lastErr = oneLine(err.Error())
+						a.log.Add(exec.Message{Err: err})
+						return
+					}
+					if !a.results.Shows(g) {
+						return // the tab was closed while the job was queued
+					}
+					placed.Store(true)
+					g.SetResult(nr)
+					res.Release() // the old file cursor (Release never calls Lua)
+				})
+				if nr != nil && !placed.Load() {
+					nr.Release() // no tab shows it: close its file cursor
+				}
+			})
+			return true
+		}
 		if res := tab.Grid.Result(); res != nil {
 			sql, args, origin, s := res.SQL, res.Args, res.Origin, a.sessionOf(res)
 			if s == nil {
@@ -848,15 +883,28 @@ func (a *App) gridAction(action string) bool {
 			g := tab.Grid
 			a.do(func() {
 				nr, err := a.runner(s).Grid(context.Background(), sql, origin, args...)
+				var placed atomic.Bool
 				a.ui(func() {
 					if err != nil {
 						a.lastErr = oneLine(err.Error())
 						return
 					}
+					if !a.results.Shows(g) {
+						return // the tab was closed while the statement ran
+					}
+					placed.Store(true)
 					nr.Title = res.Title
 					g.SetResult(nr)
 				})
+				if nr != nil && !placed.Load() {
+					nr.Release() // no tab shows it: release its cursor (and the main session)
+				}
 			})
+		}
+	case "export":
+		// The whole flow (type, settings, file) is the export command.
+		if tab.Grid.Result() != nil {
+			a.invoke("export")
 		}
 	case "copy_cell", "copy_row":
 		var text string

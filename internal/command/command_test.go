@@ -20,11 +20,20 @@ type host struct {
 	messages []exec.Message
 }
 
-func (h *host) Result(r *exec.Result)                              { h.results = append(h.results, r) }
-func (h *host) Text(_, text, _ string)                             { h.texts = append(h.texts, text) }
-func (h *host) Message(m exec.Message)                             { h.messages = append(h.messages, m) }
-func (h *host) Confirm(string) (bool, error)                       { return false, nil }
-func (h *host) Pick(string, []string) (int, error)                 { return -1, script.ErrNoUI }
+func (h *host) Result(r *exec.Result)              { h.results = append(h.results, r) }
+func (h *host) Text(_, text, _ string)             { h.texts = append(h.texts, text) }
+func (h *host) Message(m exec.Message)             { h.messages = append(h.messages, m) }
+func (h *host) Confirm(string) (bool, error)       { return false, nil }
+func (h *host) Pick(string, []string) (int, error) { return -1, script.ErrNoUI }
+func (h *host) Form(string, []script.OptionSpec, map[string]any) (map[string]any, bool, error) {
+	return nil, false, script.ErrNoUI
+}
+func (h *host) OpenFile(script.SaveFileOptions) (string, bool, error) {
+	return "", false, script.ErrNoUI
+}
+func (h *host) SaveFile(script.SaveFileOptions) (string, bool, error) {
+	return "", false, script.ErrNoUI
+}
 func (h *host) EditorSet(string) error                             { return script.ErrNoUI }
 func (h *host) EditorOpen(string, string, *script.ObjectRef) error { return nil }
 func (h *host) About() error                                       { return nil }
@@ -81,12 +90,37 @@ func TestDefaultsLoad(t *testing.T) {
 		}
 	}
 	// Every command of spec section 8, one file each.
-	if got := strings.Join(names, " "); got != "cat cd cp du edit export grep head help history kill ll ls mv ps pwd reload tail wc" {
+	if got := strings.Join(names, " "); got != "cat cd cp du edit export grep head help history kill ll ls mv open ps pwd reload tail wc" {
 		t.Fatalf("defaults: %s", got)
 	}
+	// The export formats (A28), one file each as well.
+	var exps []string
+	for _, e := range r.Exporters() {
+		exps = append(exps, e.Name)
+		if !e.Default || e.Source != "embedded:exporter_"+e.Name+".lua" || e.Title == "" || len(e.Extensions) == 0 {
+			t.Errorf("exporter %s: %+v", e.Name, e)
+		}
+	}
+	if got := strings.Join(exps, " "); got != "csv json" {
+		t.Fatalf("default exporters: %s", got)
+	}
+	if got := strings.Join(r.ExporterNames(), " "); got != "csv json" {
+		t.Errorf("exporter names: %s", got)
+	}
+	// And the import formats (A29).
+	var imps []string
+	for _, e := range r.Importers() {
+		imps = append(imps, e.Name)
+		if !e.Default || e.Source != "embedded:importer_"+e.Name+".lua" || e.Title == "" || len(e.Extensions) == 0 {
+			t.Errorf("importer %s: %+v", e.Name, e)
+		}
+	}
+	if got := strings.Join(imps, " "); got != "csv" || strings.Join(r.ImporterNames(), " ") != "csv" {
+		t.Fatalf("default importers: %s", got)
+	}
 	files, _ := DefaultScripts()
-	if len(files) != len(names) {
-		t.Errorf("%d scripts for %d commands", len(files), len(names))
+	if len(files) != len(names)+len(exps)+len(imps) {
+		t.Errorf("%d scripts for %d commands, %d exporters and %d importers", len(files), len(names), len(exps), len(imps))
 	}
 	for _, c := range r.Commands() {
 		if c.Source != "embedded:"+c.Name+".lua" {

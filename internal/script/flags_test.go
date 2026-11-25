@@ -149,7 +149,7 @@ func newExportRuntime(t *testing.T, res *exec.Result, view exec.View) (*Runtime,
 	cfg := &config.Config{Profiles: map[string]*config.Profile{}}
 	rt := New(Env{Workspace: session.NewWorkspace(cfg, nil), Host: h})
 	t.Cleanup(rt.Close)
-	mustLoad(t, rt, `dbcc.command{ name = "x", args = { "string", "string?" }, run = function(ctx, args)
+	mustLoad(t, rt, `dbcc.command{ name = "x", args = { "file", "string?" }, run = function(ctx, args)
   ctx:message("n=" .. ctx:export(args[1], { force = args[2] == "force", progress = 2 }))
 end }`)
 	return rt, h

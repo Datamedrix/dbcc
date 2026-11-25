@@ -85,6 +85,15 @@ func (a *App) gridOptionsFor(res *exec.Result) grid.Options {
 			a.closeModal("gridprompt", a.results.Current().primitive())
 		},
 	}
+	if res != nil && res.File != nil {
+		// A file result (A29): an error of a background read (I/O, the
+		// importer, F8) goes to the message log; it runs on the worker.
+		opts.OnFetched = func(_ int, err error) {
+			if err != nil && !errors.Is(err, exec.ErrCursorClosed) {
+				a.message(exec.Message{Err: err})
+			}
+		}
+	}
 	if s != nil && res != nil && res.Origin != nil {
 		opts.CompleteWhere = a.whereCompleter(s, res.Origin)
 	}
@@ -100,6 +109,9 @@ func (a *App) gridOptionsFor(res *exec.Result) grid.Options {
 
 // sessionOf returns the session a result belongs to.
 func (a *App) sessionOf(res *exec.Result) *session.Session {
+	if res != nil && res.File != nil {
+		return nil // a file result belongs to no connection (A29)
+	}
 	if res != nil && res.Origin != nil && res.Origin.Object.Conn != "" {
 		if s := a.ws.Sessions()[res.Origin.Object.Conn]; s != nil {
 			return s

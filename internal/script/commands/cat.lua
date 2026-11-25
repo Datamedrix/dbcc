@@ -225,17 +225,43 @@ local function note_ambiguous(ctx, obj)
   end
 end
 
+-- cat_file describes a file (A29): where it is, how it is read, its columns.
+local function cat_file(ctx, obj)
+  local info = ctx:file_info(obj)
+  local opts = {}
+  for k, v in pairs(info.options) do
+    opts[#opts + 1] = k .. "=" .. (type(v) == "string" and string.format("%q", v) or tostring(v))
+  end
+  table.sort(opts)
+  local out = {
+    "file:     " .. info.path,
+    "size:     " .. dbcc.fmt.size(info.size),
+    "modified: " .. info.modified,
+    "import:   " .. info.importer .. (#opts > 0 and (" (" .. table.concat(opts, ", ") .. ")") or ""),
+    "",
+  }
+  local rows = {}
+  for i, c in ipairs(info.columns) do
+    local numeric = c.numeric and (c.decimal == "," and "yes, decimal comma" or "yes") or "no"
+    rows[i] = { i, c.name, numeric }
+  end
+  out[#out + 1] = dbcc.fmt.table({ "#", "column", "numeric" }, rows)
+  ctx:text(table.concat(out, "\n"), nil, { title = "cat " .. obj.name })
+end
+
 dbcc.command{
   name  = "cat",
-  usage = "cat [-t kind] <object>",
+  usage = "cat [-t kind] <object|file:path>",
   help  = "Structure of a table (columns, keys, foreign keys, checks, indexes, triggers, options); " ..
-          "source of a view, procedure, function, trigger or event. -t table|view|procedure|function|trigger|event",
+          "source of a view, procedure, function, trigger or event. -t table|view|procedure|function|trigger|event. " ..
+          "file:path: path, size, date, import settings and columns of the file",
   args  = { "object" },
   flags = { t = "string" },
   flag_values = { t = { "table", "view", "procedure", "function", "trigger", "event", "materialized view", "mview" } },
   run = function(ctx, args, flags)
     local kind = flags.t and (aliases[flags.t] or flags.t)
     local obj = ctx:resolve(args[1], kind)
+    if obj.kind == "file" then return cat_file(ctx, obj) end
     if not kind then note_ambiguous(ctx, obj) end
     if obj.kind == "table" or obj.kind == "materialized view" then
       describe(ctx, obj)

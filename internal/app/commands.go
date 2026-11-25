@@ -120,6 +120,18 @@ func (h *headlessSink) Pick(title string, items []string) (int, error) {
 	return -1, fmt.Errorf("choosing from a list is %w", script.ErrNoUI)
 }
 
+func (h *headlessSink) Form(string, []script.OptionSpec, map[string]any) (map[string]any, bool, error) {
+	return nil, false, fmt.Errorf("a form is %w", script.ErrNoUI)
+}
+
+func (h *headlessSink) SaveFile(script.SaveFileOptions) (string, bool, error) {
+	return "", false, fmt.Errorf("the file dialog is %w", script.ErrNoUI)
+}
+
+func (h *headlessSink) OpenFile(script.SaveFileOptions) (string, bool, error) {
+	return "", false, fmt.Errorf("the file dialog is %w", script.ErrNoUI)
+}
+
 func (h *headlessSink) EditorSet(text string) error {
 	return fmt.Errorf("the editor is %w", script.ErrNoUI)
 }

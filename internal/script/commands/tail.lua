@@ -4,10 +4,11 @@ local data_kinds = { table = true, view = true, ["materialized view"] = true }
 
 dbcc.command{
   name  = "tail",
-  usage = "tail [-f] [-i seconds] [-k column] <table|view> [n]",
+  usage = "tail [-f] [-i seconds] [-k column] <table|view|file:path> [n]",
   help  = "Show the last n rows (default 10) by primary key or -k column, ascending. "
        .. "-f follows: rows with a key above the last one are appended as they are inserted "
-       .. "(polled every -i seconds, default 2, on the auxiliary connection; closing the tab or F8 stops it)",
+       .. "(polled every -i seconds, default 2, on the auxiliary connection; closing the tab or F8 stops it). "
+       .. "file:path: the last n records of the file (no -f, no -k)",
   args  = { "object", "int?" },
   flags = { f = "bool", i = "string", k = "string" },
   run = function(ctx, args, flags)
@@ -23,6 +24,10 @@ dbcc.command{
       end
     end
     local obj = ctx:resolve(args[1])
+    if obj.kind == "file" then
+      if flags.f or flags.k then error("-f and -k are not available for files", 0) end
+      return ctx:file_grid(obj, { tail = n })
+    end
     if not data_kinds[obj.kind] then
       error(obj.name .. " is a " .. obj.kind .. ", not a table or view", 0)
     end

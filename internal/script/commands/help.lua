@@ -37,6 +37,30 @@ dbcc.command{
           out[#out + 1] = ""
           out[#out + 1] = "arguments: " .. table.concat(c.args, " ")
         end
+        -- The formats are plugins (dbcc.exporter, dbcc.importer): list them with their options.
+        local formats = (c.name == "export" and dbcc.exporters()) or (c.name == "open" and dbcc.importers()) or {}
+        for _, e in ipairs(formats) do
+          local exts = {}
+          for _, x in ipairs(e.extensions) do exts[#exts + 1] = "." .. x end
+          out[#out + 1] = ""
+          out[#out + 1] = "type " .. e.name .. " — " .. e.title ..
+            (#exts > 0 and (" (" .. table.concat(exts, ", ") .. ")") or "")
+          for _, o in ipairs(e.options) do
+            local def = o.default
+            if o.type == "choice" then
+              for _, ch in ipairs(o.choices) do
+                if ch.value == o.default then def = ch.label end
+              end
+            end
+            local line = "  -o " .. o.name .. "=<" .. o.type .. ">  " .. o.label .. " (default: " .. tostring(def) .. ")"
+            if o.type == "choice" then
+              local vals = {}
+              for _, ch in ipairs(o.choices) do vals[#vals + 1] = (ch.label:match("^%S+") or ch.value) end
+              line = line .. "; " .. table.concat(vals, ", ")
+            end
+            out[#out + 1] = line
+          end
+        end
         out[#out + 1] = ""
         out[#out + 1] = (c.write and "writes (asks for confirmation, blocked in read-only profiles); " or "") ..
           "source: " .. c.source
